@@ -57,6 +57,11 @@ Should a translation job be run to update the missing language(s)?
 - **Approve** a translation job by commenting `/translate-approve` on the PR
 - This requires membership in the `StarRocks/docs-maintainers` GitHub team
 
+### Repository Setup Required:
+- An `ORG_READ_TOKEN` secret must be configured in the repository settings
+- This token must have `read:org` scope to verify team membership
+- Without this token, the workflow cannot verify team membership and approvals will fail
+
 ## 💬 Commands
 
 | Command | Who Can Use | Description |
@@ -80,10 +85,19 @@ The workflow requires the following permissions:
    - Create a team named `docs-maintainers`
    - Add users who should be able to approve translations
 
-2. **Workflow file location:**
+2. **Configure organization access token (required for team membership check):**
+   - Create a Personal Access Token (PAT) or GitHub App token with `read:org` scope
+   - Add it as a repository secret named `ORG_READ_TOKEN`
+   - Go to repository Settings → Secrets and variables → Actions
+   - Click "New repository secret"
+   - Name: `ORG_READ_TOKEN`
+   - Value: Your PAT with `read:org` scope
+   - Note: The workflow will fall back to `GITHUB_TOKEN` if `ORG_READ_TOKEN` is not set, but team membership checks may fail
+
+3. **Workflow file location:**
    - `.github/workflows/check-translation.yml`
 
-3. **Required directory structure:**
+4. **Required directory structure:**
    ```
    docs/
    ├── en/
@@ -130,13 +144,16 @@ This workflow focuses on **detection and approval**. To actually run translation
 ## ⚠️ Troubleshooting
 
 **Issue:** "Error checking team membership"
-- **Solution:** Ensure the GitHub token has `read:org` scope and the team exists
+- **Solution:** Ensure the `ORG_READ_TOKEN` secret is configured with a PAT that has `read:org` scope. The default `GITHUB_TOKEN` doesn't have permission to read organization team memberships.
 
 **Issue:** Workflow doesn't comment on PR
 - **Solution:** Verify that changes are in the docs directories and only 1-2 languages are affected
 
 **Issue:** Approval not working
-- **Solution:** Confirm user is a member of the `StarRocks/docs-maintainers` team
+- **Solution:** Confirm user is a member of the `StarRocks/docs-maintainers` team and `ORG_READ_TOKEN` is properly configured
+
+**Issue:** "The GitHub token has the necessary permissions to check team membership" error
+- **Solution:** Create a Personal Access Token with `read:org` scope and add it as `ORG_READ_TOKEN` secret in repository settings
 
 ## 📜 License
 
