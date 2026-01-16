@@ -16,6 +16,8 @@ permissions:
 jobs:
   check-translation:
     name: Check if all languages are updated
+    # This job only runs on pull_request events, not on issue_comment
+    # This ensures we never checkout untrusted code from comments
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     
