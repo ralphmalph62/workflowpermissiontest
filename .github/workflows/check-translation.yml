@@ -67,9 +67,9 @@ jobs:
             
             # If the file exists in only 1 or 2 languages, mark as incomplete
             count=0
-            if [ "$has_en" = true ]; then ((count++)); fi
-            if [ "$has_zh" = true ]; then ((count++)); fi
-            if [ "$has_ja" = true ]; then ((count++)); fi
+            if [ "$has_en" = true ]; then count=$((count + 1)); fi
+            if [ "$has_zh" = true ]; then count=$((count + 1)); fi
+            if [ "$has_ja" = true ]; then count=$((count + 1)); fi
             
             if [ $count -gt 0 ] && [ $count -lt 3 ]; then
               missing_langs=""
