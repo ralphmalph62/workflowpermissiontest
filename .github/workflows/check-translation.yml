@@ -37,73 +37,95 @@ jobs:
           echo "Changed files:"
           echo "$CHANGED_FILES"
           
-          # Check which language directories have changes
-          HAS_EN=false
-          HAS_ZH=false
-          HAS_JA=false
+          # Extract unique basenames from docs files and check which languages have them
+          declare -A file_langs
           
           while IFS= read -r file; do
             if [[ "$file" == docs/en/* ]]; then
-              HAS_EN=true
-            fi
-            if [[ "$file" == docs/zh/* ]]; then
-              HAS_ZH=true
-            fi
-            if [[ "$file" == docs/ja/* ]]; then
-              HAS_JA=true
+              basename="${file#docs/en/}"
+              file_langs["$basename"]+="en,"
+            elif [[ "$file" == docs/zh/* ]]; then
+              basename="${file#docs/zh/}"
+              file_langs["$basename"]+="zh,"
+            elif [[ "$file" == docs/ja/* ]]; then
+              basename="${file#docs/ja/}"
+              file_langs["$basename"]+="ja,"
             fi
           done <<< "$CHANGED_FILES"
           
-          echo "has_en=$HAS_EN" >> $GITHUB_OUTPUT
-          echo "has_zh=$HAS_ZH" >> $GITHUB_OUTPUT
-          echo "has_ja=$HAS_JA" >> $GITHUB_OUTPUT
+          # Check if any doc file is missing from languages
+          INCOMPLETE_FILES=""
+          for basename in "${!file_langs[@]}"; do
+            langs="${file_langs[$basename]}"
+            has_en=false
+            has_zh=false
+            has_ja=false
+            
+            if [[ "$langs" == *"en,"* ]]; then has_en=true; fi
+            if [[ "$langs" == *"zh,"* ]]; then has_zh=true; fi
+            if [[ "$langs" == *"ja,"* ]]; then has_ja=true; fi
+            
+            # If the file exists in only 1 or 2 languages, mark as incomplete
+            count=0
+            if [ "$has_en" = true ]; then ((count++)); fi
+            if [ "$has_zh" = true ]; then ((count++)); fi
+            if [ "$has_ja" = true ]; then ((count++)); fi
+            
+            if [ $count -gt 0 ] && [ $count -lt 3 ]; then
+              missing_langs=""
+              if [ "$has_en" = false ]; then missing_langs+="en,"; fi
+              if [ "$has_zh" = false ]; then missing_langs+="zh,"; fi
+              if [ "$has_ja" = false ]; then missing_langs+="ja,"; fi
+              INCOMPLETE_FILES+="$basename:$missing_langs;"
+            fi
+          done
           
-          # Count how many languages have changes
-          COUNT=0
-          if [ "$HAS_EN" = "true" ]; then COUNT=$((COUNT + 1)); fi
-          if [ "$HAS_ZH" = "true" ]; then COUNT=$((COUNT + 1)); fi
-          if [ "$HAS_JA" = "true" ]; then COUNT=$((COUNT + 1)); fi
+          if [ -n "$INCOMPLETE_FILES" ]; then
+            echo "incomplete_files=$INCOMPLETE_FILES" >> $GITHUB_OUTPUT
+            echo "has_incomplete=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_incomplete=false" >> $GITHUB_OUTPUT
+          fi
           
-          echo "lang_count=$COUNT" >> $GITHUB_OUTPUT
-          
-          echo "Languages with changes: $COUNT (EN: $HAS_EN, ZH: $HAS_ZH, JA: $HAS_JA)"
+          echo "Incomplete files: $INCOMPLETE_FILES"
           
           # Ensure the script exits successfully
           exit 0
       
       - name: Comment on PR if translation needed
-        if: steps.changed-files.outputs.lang_count != '0' && steps.changed-files.outputs.lang_count != '3'
+        if: steps.changed-files.outputs.has_incomplete == 'true'
         uses: actions/github-script@v7
         with:
           script: |
-            const langCount = '${{ steps.changed-files.outputs.lang_count }}';
-            const hasEn = '${{ steps.changed-files.outputs.has_en }}' === 'true';
-            const hasZh = '${{ steps.changed-files.outputs.has_zh }}' === 'true';
-            const hasJa = '${{ steps.changed-files.outputs.has_ja }}' === 'true';
+            const incompleteFiles = '${{ steps.changed-files.outputs.incomplete_files }}';
             
-            const updatedLangs = [];
-            const missingLangs = [];
+            // Parse the incomplete files string
+            const files = incompleteFiles.split(';').filter(f => f.trim());
             
-            if (hasEn) updatedLangs.push('English (`/docs/en/`)');
-            else missingLangs.push('English (`/docs/en/`)');
-            
-            if (hasZh) updatedLangs.push('Chinese (`/docs/zh/`)');
-            else missingLangs.push('Chinese (`/docs/zh/`)');
-            
-            if (hasJa) updatedLangs.push('Japanese (`/docs/ja/`)');
-            else missingLangs.push('Japanese (`/docs/ja/`)');
+            let fileDetails = '';
+            for (const fileEntry of files) {
+              if (!fileEntry) continue;
+              const [filename, missingLangs] = fileEntry.split(':');
+              const langs = missingLangs.split(',').filter(l => l.trim());
+              
+              const langNames = langs.map(l => {
+                if (l === 'en') return 'English';
+                if (l === 'zh') return 'Chinese';
+                if (l === 'ja') return 'Japanese';
+                return l;
+              });
+              
+              fileDetails += `\n- **${filename}** - Missing in: ${langNames.join(', ')}`;
+            }
             
             const commentBody = `## 🌍 Translation Check
             
-            This PR modifies documentation in **${langCount}** language(s):
-            ${updatedLangs.map(l => `- ✅ ${l}`).join('\n')}
-            
-            The following language(s) are not updated:
-            ${missingLangs.map(l => `- ❌ ${l}`).join('\n')}
+            This PR contains documentation files that are not translated to all languages:
+            ${fileDetails}
             
             ---
             
-            **Should a translation job be run to update the missing language(s)?**
+            **Should a translation job be run to create the missing translations?**
             
             - To **request** a translation job, comment: \`/translate-request\`
             - To **approve** a translation job (docs-maintainer team only), comment: \`/translate-approve\`
