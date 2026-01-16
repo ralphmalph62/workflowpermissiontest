@@ -12,7 +12,6 @@ on:
 permissions:
   pull-requests: write
   contents: read
-  organization-projects: read
 
 jobs:
   check-translation:
@@ -31,8 +30,7 @@ jobs:
         id: changed-files
         run: |
           # Get the list of changed files in the PR
-          git fetch origin ${{ github.event.pull_request.base.ref }}
-          CHANGED_FILES=$(git diff --name-only origin/${{ github.event.pull_request.base.ref }}...HEAD)
+          CHANGED_FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }})
           
           echo "Changed files:"
           echo "$CHANGED_FILES"
@@ -174,16 +172,20 @@ jobs:
             
             try {
               // Check if the commenter is a member of the docs-maintainers team
-              const { data: membership } = await github.rest.teams.getMembershipForUserInOrg({
-                org: 'StarRocks',
-                team_slug: 'docs-maintainers',
-                username: commenter
-              }).catch(error => {
-                if (error.status === 404) {
-                  return { data: null };
+              let membership = null;
+              try {
+                const response = await github.rest.teams.getMembershipForUserInOrg({
+                  org: 'StarRocks',
+                  team_slug: 'docs-maintainers',
+                  username: commenter
+                });
+                membership = response.data;
+              } catch (error) {
+                if (error.status !== 404) {
+                  throw error;
                 }
-                throw error;
-              });
+                // 404 means user is not a member, membership stays null
+              }
               
               if (membership && (membership.state === 'active')) {
                 // User is a team member, approve the translation
