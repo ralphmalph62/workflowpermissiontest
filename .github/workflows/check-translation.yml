@@ -1,0 +1,238 @@
+name: Check Translation Coverage
+
+on:
+  pull_request:
+    paths:
+      - 'docs/en/**'
+      - 'docs/zh/**'
+      - 'docs/ja/**'
+  issue_comment:
+    types: [created]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  check-translation:
+    name: Check if all languages are updated
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      
+      - name: Get changed files
+        id: changed-files
+        run: |
+          # Get the list of changed files in the PR
+          git fetch origin ${{ github.event.pull_request.base.ref }}
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.event.pull_request.base.ref }}...HEAD)
+          
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+          
+          # Check which language directories have changes
+          HAS_EN=false
+          HAS_ZH=false
+          HAS_JA=false
+          
+          while IFS= read -r file; do
+            if [[ "$file" == docs/en/* ]]; then
+              HAS_EN=true
+            fi
+            if [[ "$file" == docs/zh/* ]]; then
+              HAS_ZH=true
+            fi
+            if [[ "$file" == docs/ja/* ]]; then
+              HAS_JA=true
+            fi
+          done <<< "$CHANGED_FILES"
+          
+          echo "has_en=$HAS_EN" >> $GITHUB_OUTPUT
+          echo "has_zh=$HAS_ZH" >> $GITHUB_OUTPUT
+          echo "has_ja=$HAS_JA" >> $GITHUB_OUTPUT
+          
+          # Count how many languages have changes
+          COUNT=0
+          if [ "$HAS_EN" = "true" ]; then ((COUNT++)); fi
+          if [ "$HAS_ZH" = "true" ]; then ((COUNT++)); fi
+          if [ "$HAS_JA" = "true" ]; then ((COUNT++)); fi
+          
+          echo "lang_count=$COUNT" >> $GITHUB_OUTPUT
+          
+          echo "Languages with changes: $COUNT (EN: $HAS_EN, ZH: $HAS_ZH, JA: $HAS_JA)"
+      
+      - name: Comment on PR if translation needed
+        if: steps.changed-files.outputs.lang_count != '0' && steps.changed-files.outputs.lang_count != '3'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const langCount = '${{ steps.changed-files.outputs.lang_count }}';
+            const hasEn = '${{ steps.changed-files.outputs.has_en }}' === 'true';
+            const hasZh = '${{ steps.changed-files.outputs.has_zh }}' === 'true';
+            const hasJa = '${{ steps.changed-files.outputs.has_ja }}' === 'true';
+            
+            const updatedLangs = [];
+            const missingLangs = [];
+            
+            if (hasEn) updatedLangs.push('English (`/docs/en/`)');
+            else missingLangs.push('English (`/docs/en/`)');
+            
+            if (hasZh) updatedLangs.push('Chinese (`/docs/zh/`)');
+            else missingLangs.push('Chinese (`/docs/zh/`)');
+            
+            if (hasJa) updatedLangs.push('Japanese (`/docs/ja/`)');
+            else missingLangs.push('Japanese (`/docs/ja/`)');
+            
+            const commentBody = `## 🌍 Translation Check
+            
+            This PR modifies documentation in **${langCount}** language(s):
+            ${updatedLangs.map(l => `- ✅ ${l}`).join('\n')}
+            
+            The following language(s) are not updated:
+            ${missingLangs.map(l => `- ❌ ${l}`).join('\n')}
+            
+            ---
+            
+            **Should a translation job be run to update the missing language(s)?**
+            
+            - To **request** a translation job, comment: \`/translate-request\`
+            - To **approve** a translation job (docs-maintainers team only), comment: \`/translate-approve\`
+            
+            > **Note:** Only members of the \`StarRocks/docs-maintainers\` team can approve translation jobs.`;
+            
+            // Check if we already commented on this PR
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            
+            const botComment = comments.find(comment => 
+              comment.user.type === 'Bot' && 
+              comment.body.includes('🌍 Translation Check')
+            );
+            
+            if (botComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: commentBody
+              });
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: commentBody
+              });
+            }
+
+  handle-translation-commands:
+    name: Handle translation commands
+    if: |
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request &&
+      (contains(github.event.comment.body, '/translate-request') || contains(github.event.comment.body, '/translate-approve'))
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Check if comment is a translation request
+        if: contains(github.event.comment.body, '/translate-request')
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const commentBody = `✅ Translation job requested by @${{ github.event.comment.user.login }}.
+            
+            Waiting for approval from a member of the \`StarRocks/docs-maintainers\` team.
+            
+            To approve, comment: \`/translate-approve\``;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: commentBody
+            });
+      
+      - name: Check team membership and approve
+        if: contains(github.event.comment.body, '/translate-approve')
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const commenter = '${{ github.event.comment.user.login }}';
+            
+            try {
+              // Check if the commenter is a member of the docs-maintainers team
+              const { data: membership } = await github.rest.teams.getMembershipForUserInOrg({
+                org: 'StarRocks',
+                team_slug: 'docs-maintainers',
+                username: commenter
+              }).catch(error => {
+                if (error.status === 404) {
+                  return { data: null };
+                }
+                throw error;
+              });
+              
+              if (membership && (membership.state === 'active')) {
+                // User is a team member, approve the translation
+                const commentBody = `✅ Translation job **approved** by @${commenter} (docs-maintainers team member).
+                
+                🚀 The translation job will be triggered.
+                
+                _Note: Translation job execution is configured separately._`;
+                
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  body: commentBody
+                });
+                
+                // Add label to indicate translation is approved
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  labels: ['translation-approved']
+                });
+              } else {
+                // User is not a team member
+                const commentBody = `❌ @${commenter}, you do not have permission to approve translation jobs.
+                
+                Only members of the \`StarRocks/docs-maintainers\` team can approve translations.`;
+                
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  body: commentBody
+                });
+              }
+            } catch (error) {
+              console.error('Error checking team membership:', error);
+              const commentBody = `⚠️ Error checking team membership for @${commenter}. 
+              
+              Error: ${error.message}
+              
+              Please ensure:
+              1. The \`StarRocks/docs-maintainers\` team exists
+              2. The GitHub token has the necessary permissions to check team membership
+              3. You are a member of the \`StarRocks\` organization`;
+              
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: commentBody
+              });
+            }
