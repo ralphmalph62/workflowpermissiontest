@@ -209,6 +209,15 @@ jobs:
                 membership = response.data;
               } catch (error) {
                 if (error.status !== 404) {
+                const commentBody = `@${commenter} tried to approve. Error status is ${error.status}.`
+                
+                
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  body: commentBody
+                });
                   throw error;
                 }
                 // 404 means user is not a member, membership stays null
@@ -216,11 +225,8 @@ jobs:
               
               if (membership && (membership.state === 'active')) {
                 // User is a team member, approve the translation
-                const commentBody = `✅ Translation job **approved** by @${commenter} (docs-maintainer team member).
+                const commentBody = `@${commenter} tried to approve. Error status is ${error.status}.`
                 
-                🚀 The translation job will be triggered.
-                
-                _Note: Translation job execution is configured separately._`;
                 
                 await github.rest.issues.createComment({
                   owner: context.repo.owner,
@@ -238,9 +244,8 @@ jobs:
                 });
               } else {
                 // User is not a team member
-                const commentBody = `❌ @${commenter}, you do not have permission to approve translation jobs.
+                const commentBody = `@${commenter} tried to approve. Error status is ${error.status}.`
                 
-                Only members of the \`StarRocks/docs-maintainer\` team can approve translations.`;
                 
                 await github.rest.issues.createComment({
                   owner: context.repo.owner,
