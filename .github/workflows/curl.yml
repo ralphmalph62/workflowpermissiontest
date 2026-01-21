@@ -19,10 +19,10 @@ jobs:
     steps:
       - name: Get list of organization members
         env:
-          MEMBERSHIP_TOKEN: ${{ secrets.MEMBERSHIP_TOKEN || secrets.GITHUB_TOKEN }}
+          DOC_MEMBERSHIP_PAT: ${{ secrets.DOC_MEMBERSHIP_PAT || secrets.GITHUB_TOKEN }}
         run: |
           # Fetch the list of users in the organization
-          DOCS_MAINTAINERS=$(curl -s -H "Authorization: token $MEMBERSHIP_TOKEN" \
+          DOCS_MAINTAINERS=$(curl -s -H "Authorization: token $DOC_MEMBERSHIP_PAT" \
           "https://api.github.com/orgs/starrocks/teams/docs-maintainer/members" | jq -r '.[].login')
 
           # Save the allowlisted users in a file
