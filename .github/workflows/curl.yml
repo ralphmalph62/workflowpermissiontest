@@ -1,0 +1,31 @@
+name: Doc translation watchdog
+
+on:
+  pull_request:
+    paths:
+      - 'docs/en/**'
+      - 'docs/zh/**'
+      - 'docs/ja/**'
+  issue_comment:
+    types: [created]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  verify-membership:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get list of organization members
+        env:
+          MEMBERSHIP_TOKEN: ${{ secrets.MEMBERSHIP_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          # Fetch the list of users in the organization
+          DOCS_MAINTAINERS=$(curl -s -H "Authorization: token $MEMBERSHIP_TOKEN" \
+          "https://api.github.com/orgs/starrocks/teams/docs-maintainer/members" | jq -r '.[].login')
+
+          # Save the allowlisted users in a file
+          echo "$DOCS_MAINTAINERS" > allowlisted_users.txt
+          cat allowlisted_users.txt
+
