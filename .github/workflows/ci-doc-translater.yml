@@ -89,12 +89,27 @@ jobs:
             done
           done
 
-      - name: Push Changes
+      - name: Get PR Info
+        id: pr_info
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+            core.setOutput('is_fork', pr.head.repo.fork);
+            core.setOutput('head_ref', pr.head.ref);
+
+      - name: Commit and Push
+        # Only runs if this is a branch of our repo
+        if: steps.pr_info.outputs.is_fork == 'false'
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           if [[ -n $(git status --porcelain) ]]; then
-            git add .
+            git add docs/
             git commit -m "docs: automated translation via Gemini [skip ci]"
-            git push origin HEAD:${{ github.event.pull_request.head.ref }}
+            git push origin HEAD:refs/heads/${{ steps.pr_info.outputs.head_ref }}
           fi
