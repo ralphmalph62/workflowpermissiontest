@@ -14,6 +14,7 @@ permissions:
   contents: read
 
 jobs:
+  if: false
   check-translation:
     name: Check if all languages are updated
     # This job only runs on pull_request events, not on issue_comment

@@ -1,0 +1,70 @@
+name: Translation Status Check
+on:
+  pull_request:
+    paths: ['docs/en/**', 'docs/zh/**', 'docs/ja/**']
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get Changed Files
+        id: changed-files
+        uses: tj-actions/changed-files@v44
+        with:
+          files: |
+            docs/en/**/*.md*
+            docs/zh/**/*.md*
+            docs/ja/**/*.md*
+
+      - name: Generate Checklist Body
+        id: checklist
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const files = "${{ steps.changed-files.outputs.all_changed_files }}".split(' ');
+            
+            if (files.length === 0 || files[0] === "") {
+              core.setOutput('body', 'No translatable files detected.');
+              return;
+            }
+
+            let body = "### 🌎 Translation Required?\n";
+            body += "The following languages are missing for your changes. Check the ones you wish to generate:\n\n";
+            
+            body += "#### ⚡ Global Actions\n";
+            body += "- [ ] **Japanese (ja)** for **ALL** missing files\n";
+            body += "- [ ] **Chinese (zh)** for **ALL** missing files\n";
+            body += "- [ ] **English (en)** for **ALL** missing files\n\n---\n";
+
+            files.forEach(file => {
+              const parts = file.split('/');
+              const sourceLang = parts[1]; // Assumes docs/[lang]/...
+              const targets = ['en', 'zh', 'ja'].filter(l => l !== sourceLang);
+              
+              let fileChecklist = "";
+              targets.forEach(lang => {
+                const targetPath = file.replace(`/docs/${sourceLang}/`, `/docs/${lang}/`);
+                if (!fs.existsSync(targetPath)) {
+                  fileChecklist += `- [ ] **${lang}** for \`${file}\`\n`;
+                }
+              });
+
+              if (fileChecklist) {
+                body += `#### \`${file}\` (Missing translations)\n${fileChecklist}\n`;
+              }
+            });
+
+            body += "---\n*Maintainers: Check boxes and reply with `/translate` to start.*";
+            core.setOutput('body', body);
+
+      - name: Post/Update Status Comment
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body: ${{ steps.checklist.outputs.body }}
+          edit-mode: replace
