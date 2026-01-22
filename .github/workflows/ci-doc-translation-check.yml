@@ -28,6 +28,8 @@ jobs:
             const fs = require('fs');
             const files = "${{ steps.changed-files.outputs.all_changed_files }}".split(' ');
             
+            console.log(files);
+
             if (files.length === 0 || files[0] === "") {
               core.setOutput('body', 'No translatable files detected.');
               return;
