@@ -6,13 +6,10 @@ on:
       - 'docs/en/**'
       - 'docs/zh/**'
       - 'docs/ja/**'
+    types: [ labeled ]
   issue_comment:
     types: [created]
-  label:
-    types:
-      - created
-      - deleted
-      - edited
+
 
 permissions:
   pull-requests: write
