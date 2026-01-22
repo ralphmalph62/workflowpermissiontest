@@ -3,6 +3,7 @@ on:
   issue_comment:
     types: [created]
 jobs:
+  if: false
 
   handle-translation-APPROVAL:
     name: Translate the documents upon approval
