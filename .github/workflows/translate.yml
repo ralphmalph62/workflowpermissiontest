@@ -1,0 +1,90 @@
+name: Translation Runner
+on:
+  issue_comment:
+    types: [created]
+jobs:
+
+  handle-translation-APPROVAL:
+    name: Translate the documents upon approval
+    if: |
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request &&
+      (contains(github.event.comment.body, '/translate-approve'))
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Get list of docs-maintainers
+        run: |
+          # Fetch the list of users in the organization team docs-maintainer
+          DOC_MEMBERSHIP_PAT=${{ secrets.DOC_MEMBERSHIP_PAT || secrets.GITHUB_TOKEN }}
+          DOCS_MAINTAINERS=$(curl -s -H "Authorization: token $DOC_MEMBERSHIP_PAT" \
+          "https://api.github.com/orgs/starrocks/teams/docs-maintainer/members" | jq -r '.[].login')
+
+          # Save the allowlisted users in a file
+          echo "$DOCS_MAINTAINERS" > allowlisted_users.txt
+          cat allowlisted_users.txt
+
+      - name: Verify approver membership
+        id: verify-approver
+        run: |
+            APPROVER="${{ github.event.comment.user.login }}"
+            echo "Approver: $APPROVER"
+
+            if grep -q --line-regexp "$APPROVER" allowlisted_users.txt; then
+              echo "User $APPROVER is in the allowlist."
+              echo "is_allowlisted=true" >> $GITHUB_OUTPUT
+            else
+              echo "User $APPROVER is NOT in the allowlist."
+              echo "is_allowlisted=false" >> $GITHUB_OUTPUT
+            fi
+
+
+      - name: Quit if approver is not allowlisted
+        if: steps.verify-approver.outputs.is_allowlisted != 'true'
+        run: |
+            echo "Approver is not a member of docs-maintainer team. Quitting."
+            exit 1
+
+      - name: Checkout PR
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: refs/pull/${{ github.event.issue.number }}/head
+
+
+      - name: Run Translations
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          pip install -U google-genai==0.3.0 pyyaml==6.0.2
+          # Use double quotes around "$FILES" to prevent word-splitting
+          python docs/translation/translate.py -l ja --files docs/en/example2.md docs/en/example3.md
+
+      - name: Get PR Info
+        id: pr_info
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+            core.setOutput('is_fork', pr.head.repo.fork);
+            core.setOutput('head_ref', pr.head.ref);
+
+      - name: Commit and Push
+        # Only runs if this is a branch of our repo
+        if: steps.pr_info.outputs.is_fork == 'false'
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          if [[ -n $(git status --porcelain) ]]; then
+            git add docs/
+            git commit -m "docs: automated translation via Gemini [skip ci]"
+            git push origin HEAD:refs/heads/${{ steps.pr_info.outputs.head_ref }}
+          fi
+
+
+
