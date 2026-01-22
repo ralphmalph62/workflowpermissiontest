@@ -57,10 +57,9 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          export GEMINI_API_KEY=${GEMINI_API_KEY}
           pip install -U google-genai==0.3.0 pyyaml==6.0.2
           # Use double quotes around "$FILES" to prevent word-splitting
-          python docs/translation/translate.py -l ja --files docs/en/example2.md docs/en/example3.md
+          python docs/translation/translate.py -l ja --files "docs/en/example2.md docs/en/example3.md"
 
       - name: Get PR Info
         id: pr_info
