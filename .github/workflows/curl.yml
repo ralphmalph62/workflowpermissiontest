@@ -8,6 +8,9 @@ on:
       - 'docs/ja/**'
   issue_comment:
     types: [created]
+  label:
+    types:
+      - created
 
 permissions:
   pull-requests: write
