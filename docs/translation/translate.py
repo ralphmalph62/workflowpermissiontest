@@ -13,7 +13,7 @@ if "GEMINI_API_KEY" not in os.environ:
     )
 
 try:
-    # The latest version of the 
+    # The latest version of the Gemini SDK requires the API key to be passed explicitly.
     # Don't use this any more: client = genai.Client()
     client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 except Exception as e:
