@@ -188,7 +188,24 @@ jobs:
               issue_number: context.issue.number,
               body: commentBody
             });
-      
+
+      - name: Check if comment is a translation APPROVAL
+        if: contains(github.event.comment.body, '/translate-approve')
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const commentBody = `✅ Translation job APPROVAL by @${{ github.event.comment.user.login }}.
+            
+            Waiting for approval from a member of the \`StarRocks/docs-maintainer\` team.
+            
+            To approve, comment: \`/scooby-doo\``;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: commentBody
+            });
       - name: Check team membership and approve
         if: contains(github.event.comment.body, '/translate-approve')
         uses: actions/github-script@v7
