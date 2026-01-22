@@ -11,20 +11,37 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - name: Check Team Membership
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const user = context.payload.comment.user.login;
-            try {
-              await github.rest.teams.getMembershipForUserInOrg({
-                org: 'StarRocks',
-                team_slug: 'docs-maintainer',
-                username: user,
-              });
-            } catch (error) {
-              core.setFailed(`User ${user} is not authorized.`);
-            }
+      - name: Get list of docs-maintainers
+        run: |
+          # Fetch the list of users in the organization team docs-maintainer
+          DOC_MEMBERSHIP_PAT=${{ secrets.DOC_MEMBERSHIP_PAT || secrets.GITHUB_TOKEN }}
+          DOCS_MAINTAINERS=$(curl -s -H "Authorization: token $DOC_MEMBERSHIP_PAT" \
+          "https://api.github.com/orgs/starrocks/teams/docs-maintainer/members" | jq -r '.[].login')
+
+          # Save the allowlisted users in a file
+          echo "$DOCS_MAINTAINERS" > allowlisted_users.txt
+          cat allowlisted_users.txt
+
+      - name: Verify approver membership
+        id: verify-approver
+        run: |
+            APPROVER="${{ github.event.comment.user.login }}"
+            echo "Approver: $APPROVER"
+
+            if grep -q --line-regexp "$APPROVER" allowlisted_users.txt; then
+              echo "User $APPROVER is in the allowlist."
+              echo "is_allowlisted=true" >> $GITHUB_OUTPUT
+            else
+              echo "User $APPROVER is NOT in the allowlist."
+              echo "is_allowlisted=false" >> $GITHUB_OUTPUT
+            fi
+
+
+      - name: Quit if approver is not allowlisted
+        if: steps.verify-approver.outputs.is_allowlisted != 'true'
+        run: |
+            echo "Approver is not a member of docs-maintainer team. Quitting."
+            exit 1
 
       - name: Checkout PR
         uses: actions/checkout@v4
