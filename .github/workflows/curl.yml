@@ -8,7 +8,6 @@ on:
       - 'docs/ja/**'
     types: [ labeled ]
   issue_comment:
-    types: [created]
 
 
 permissions:
@@ -33,8 +32,9 @@ jobs:
           # Save the allowlisted users in a file
           echo "$DOCS_MAINTAINERS" > allowlisted_users.txt
           cat allowlisted_users.txt
+          
       - name: Check if comment author is in allowlist
-        if: github.event_name == 'issue_comment'
+        if: ${{ github.event.issue.pull_request && github.event_name == 'issue_comment' }}
         run: |
             COMMENT_AUTHOR="${{ github.event.comment.user.login }}"
             echo "Comment author: $COMMENT_AUTHOR"
