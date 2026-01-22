@@ -11,6 +11,8 @@ on:
   label:
     types:
       - created
+      - deleted
+      - edited
 
 permissions:
   pull-requests: write
