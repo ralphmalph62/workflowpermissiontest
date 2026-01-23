@@ -20,15 +20,21 @@ jobs:
 
           # Save the allowlisted users in a file
           echo "$DOCS_MAINTAINERS" > allowlisted_users.txt
+          echo "Allowlisted users:"
+          cat allowlisted_users.txt
 
       - name: Verify approver membership
         id: verify-approver
         run: |
             APPROVER="${{ github.event.comment.user.login }}"
+            echo "Approver: $APPROVER"
+
             if grep -q --line-regexp "$APPROVER" allowlisted_users.txt; then
+              echo "User $APPROVER is in the allowlist."
               echo "is_allowlisted=true" >> $GITHUB_OUTPUT
             else
-              core.setFailed("User $APPROVER is not authorized.")
+              echo "::error::User $APPROVER is not authorized."
+              echo "is_allowlisted=false" >> $GITHUB_OUTPUT
               exit 1
             fi
 
@@ -52,7 +58,7 @@ jobs:
         id: changed-files
         uses: tj-actions/changed-files@v44
         with:
-          # We compare against the base branch (e.g. main) to see ALL files in the PR
+          # Compare against the base branch (e.g. main) to see ALL files in the PR
           base_sha: ${{ steps.pr_data.outputs.base_ref }}
 
       - name: Get Checkbox State
@@ -102,4 +108,3 @@ jobs:
             git commit -m "docs: automated translation via Gemini [skip ci]"
             git push origin HEAD:refs/heads/${{ steps.pr_data.outputs.head_ref }}
           fi
-
