@@ -28,8 +28,6 @@ jobs:
             const fs = require('fs');
             const files = "${{ steps.changed-files.outputs.all_changed_files }}".split(' ');
             
-            console.log(files);
-
             if (files.length === 0 || files[0] === "") {
               core.setOutput('body', 'No translatable files detected.');
               return;
@@ -45,7 +43,7 @@ jobs:
 
             files.forEach(file => {
               const parts = file.split('/');
-              const sourceLang = parts[1]; // Assumes docs/[lang]/...
+              const sourceLang = parts[1]; 
               const targets = ['en', 'zh', 'ja'].filter(l => l !== sourceLang);
               
               let fileChecklist = "";
@@ -61,12 +59,17 @@ jobs:
               }
             });
 
-            body += "---\n*Maintainers: Check boxes and reply with `/translate` to start.*";
+            const timestamp = new Date().toUTCString();
+            body += "---\n*Maintainers: Check boxes and reply with `/translate` to start.*\n";
+            body += `\n\n> 🕒 **Last updated:** ${timestamp}`;
+            
             core.setOutput('body', body);
 
       - name: Post/Update Status Comment
         uses: peter-evans/create-or-update-comment@v4
         with:
           issue-number: ${{ github.event.pull_request.number }}
+          body-includes: "### 🌎 Translation Required?"
+          comment-author: "github-actions[bot]"
           body: ${{ steps.checklist.outputs.body }}
           edit-mode: replace

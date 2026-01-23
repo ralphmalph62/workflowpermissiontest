@@ -103,8 +103,17 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Check if there are changes in the docs directory
           if [[ -n $(git status --porcelain docs/) ]]; then
             git add docs/
             git commit -m "docs: automated translation via Gemini [skip ci]"
+            
+            # Rebase to handle any commits pushed by humans while the bot was working
+            git pull --rebase origin ${{ steps.pr_data.outputs.head_ref }}
+            
+            # Push specifically to the PR head branch
             git push origin HEAD:refs/heads/${{ steps.pr_data.outputs.head_ref }}
+          else
+            echo "No translation changes to commit."
           fi
