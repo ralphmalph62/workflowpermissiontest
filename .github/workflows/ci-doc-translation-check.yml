@@ -12,11 +12,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Get PR Information
+        if: github.event.pull_request.head.repo.fork
         id: pr_data
         run: |
-          PR_JSON=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "${{ github.event.issue.pull_request.url }}")
-          echo "is_fork=$(echo $PR_JSON | jq -r '.head.repo.fork')" >> $GITHUB_OUTPUT
+          echo "is_fork=true" >> $GITHUB_OUTPUT
 
       - name: Get Changed Files
         id: changed-files
