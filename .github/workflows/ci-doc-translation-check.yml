@@ -11,6 +11,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Get PR Information
+        id: pr_data
+        run: |
+          PR_JSON=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "${{ github.event.issue.pull_request.url }}")
+          echo "is_fork=$(echo $PR_JSON | jq -r '.head.repo.fork')" >> $GITHUB_OUTPUT
+
       - name: Get Changed Files
         id: changed-files
         uses: tj-actions/changed-files@v44
@@ -20,12 +27,13 @@ jobs:
             docs/zh/**/*.md*
             docs/ja/**/*.md*
 
-      - name: Generate Checklist Body
+      - name: Generate Body
         id: checklist
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
+            const isFork = "${{ steps.pr_data.outputs.is_fork }}" === "true";
             const files = "${{ steps.changed-files.outputs.all_changed_files }}".split(' ');
             
             if (files.length === 0 || files[0] === "") {
@@ -33,36 +41,37 @@ jobs:
               return;
             }
 
-            let body = "### 🌎 Translation Required?\n";
-            body += "The following languages are missing for your changes. Check the ones you wish to generate:\n\n";
+            let body = "### 🌎 Translation Status\n";
             
-            body += "#### ⚡ Global Actions\n";
-            body += "- [ ] **Japanese (ja)** for **ALL** missing files\n";
-            body += "- [ ] **Chinese (zh)** for **ALL** missing files\n";
-            body += "- [ ] **English (en)** for **ALL** missing files\n\n---\n";
+            if (isFork) {
+              body += "The following files require translations. Since this PR is from a **fork**, our automated tool is disabled for security reasons.\n\n";
+              body += "**Maintainers:** Please generate missing translations offline and add them to this PR.\n\n";
+              files.forEach(file => { body += `- [ ] \`${file}\`\n`; });
+            } else {
+              body += "The following languages are missing. Check the ones you wish to generate:\n\n";
+              body += "#### ⚡ Global Actions\n";
+              body += "- [ ] **Japanese (ja)** for **ALL** missing files\n";
+              body += "- [ ] **Chinese (zh)** for **ALL** missing files\n";
+              body += "- [ ] **English (en)** for **ALL** missing files\n\n---\n";
 
-            files.forEach(file => {
-              const parts = file.split('/');
-              const sourceLang = parts[1]; 
-              const targets = ['en', 'zh', 'ja'].filter(l => l !== sourceLang);
-              
-              let fileChecklist = "";
-              targets.forEach(lang => {
-                const targetPath = file.replace(`docs/${sourceLang}/`, `docs/${lang}/`);
-                if (!fs.existsSync(targetPath)) {
-                  fileChecklist += `- [ ] **${lang}** for \`${file}\`\n`;
-                }
+              files.forEach(file => {
+                const parts = file.split('/');
+                const sourceLang = parts[1]; 
+                const targets = ['en', 'zh', 'ja'].filter(l => l !== sourceLang);
+                let fileChecklist = "";
+                targets.forEach(lang => {
+                  const targetPath = file.replace(`docs/${sourceLang}/`, `docs/${lang}/`);
+                  if (!fs.existsSync(targetPath)) {
+                    fileChecklist += `- [ ] **${lang}** for \`${file}\`\n`;
+                  }
+                });
+                if (fileChecklist) { body += `#### \`${file}\` (Missing translations)\n${fileChecklist}\n`; }
               });
-
-              if (fileChecklist) {
-                body += `#### \`${file}\` (Missing translations)\n${fileChecklist}\n`;
-              }
-            });
+              body += "---\n*Maintainers: Check boxes and reply with `/translate` to start.*";
+            }
 
             const timestamp = new Date().toUTCString();
-            body += "---\n*Maintainers: Check boxes and reply with `/translate` to start.*\n";
             body += `\n\n> 🕒 **Last updated:** ${timestamp}`;
-            
             core.setOutput('body', body);
 
       - name: Find Comment
@@ -71,7 +80,7 @@ jobs:
         with:
           issue-number: ${{ github.event.pull_request.number }}
           comment-author: 'github-actions[bot]'
-          body-includes: "### 🌎 Translation Required?"
+          body-includes: "### 🌎 Translation Status"
 
       - name: Create or update comment
         uses: peter-evans/create-or-update-comment@v5
@@ -80,4 +89,3 @@ jobs:
           issue-number: ${{ github.event.pull_request.number }}
           body: ${{ steps.checklist.outputs.body }}
           edit-mode: replace
-

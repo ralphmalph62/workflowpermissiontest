@@ -11,30 +11,33 @@ jobs:
       contents: write
       pull-requests: write
     steps:
+      - name: Get PR Information
+        id: pr_data
+        run: |
+          PR_JSON=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "${{ github.event.issue.pull_request.url }}")
+          echo "base_ref=$(echo $PR_JSON | jq -r '.base.ref')" >> $GITHUB_OUTPUT
+          echo "head_ref=$(echo $PR_JSON | jq -r '.head.ref')" >> $GITHUB_OUTPUT
+          echo "is_fork=$(echo $PR_JSON | jq -r '.head.repo.fork')" >> $GITHUB_OUTPUT
+
+      - name: Stop if Fork
+        if: steps.pr_data.outputs.is_fork == 'true'
+        run: |
+          echo "::error::Automated translation is not supported on forks due to security restrictions."
+          exit 0
+
       - name: Get list of docs-maintainers
         run: |
-          # Fetch the list of users in the organization team docs-maintainer
           DOC_MEMBERSHIP_PAT=${{ secrets.DOC_MEMBERSHIP_PAT || secrets.GITHUB_TOKEN }}
           DOCS_MAINTAINERS=$(curl -s -H "Authorization: token $DOC_MEMBERSHIP_PAT" \
           "https://api.github.com/orgs/starrocks/teams/docs-maintainer/members" | jq -r '.[].login')
-
-          # Save the allowlisted users in a file
           echo "$DOCS_MAINTAINERS" > allowlisted_users.txt
-          echo "Allowlisted users:"
-          cat allowlisted_users.txt
 
       - name: Verify approver membership
-        id: verify-approver
         run: |
             APPROVER="${{ github.event.comment.user.login }}"
-            echo "Approver: $APPROVER"
-
-            if grep -q --line-regexp "$APPROVER" allowlisted_users.txt; then
-              echo "User $APPROVER is in the allowlist."
-              echo "is_allowlisted=true" >> $GITHUB_OUTPUT
-            else
+            if ! grep -q --line-regexp "$APPROVER" allowlisted_users.txt; then
               echo "::error::User $APPROVER is not authorized."
-              echo "is_allowlisted=false" >> $GITHUB_OUTPUT
               exit 1
             fi
 
@@ -44,21 +47,10 @@ jobs:
           fetch-depth: 0
           ref: refs/pull/${{ github.event.issue.number }}/head
 
-      - name: Get PR Information
-        id: pr_data
-        run: |
-          # Fetch PR details to get the base branch name and head ref
-          PR_JSON=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "${{ github.event.issue.pull_request.url }}")
-          echo "base_ref=$(echo $PR_JSON | jq -r '.base.ref')" >> $GITHUB_OUTPUT
-          echo "head_ref=$(echo $PR_JSON | jq -r '.head.ref')" >> $GITHUB_OUTPUT
-          echo "is_fork=$(echo $PR_JSON | jq -r '.head.repo.fork')" >> $GITHUB_OUTPUT
-
       - name: Get Changed Files
         id: changed-files
         uses: tj-actions/changed-files@v44
         with:
-          # Compare against the base branch (e.g. main) to see ALL files in the PR
           base_sha: ${{ steps.pr_data.outputs.base_ref }}
 
       - name: Get Checkbox State
@@ -70,7 +62,7 @@ jobs:
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number,
             });
-            const report = comments.find(c => c.body.includes('### 🌎 Translation Required?'));
+            const report = comments.find(c => c.body.includes('### 🌎 Translation Status'));
             return report ? report.body : '';
 
       - name: Run Translations
@@ -81,16 +73,13 @@ jobs:
         run: |
           pip install -r docs/translation/requirements.txt
           for FILE in $FILES; do
-            # Only process files in docs/lang/ directories
             if [[ "$FILE" =~ ^docs/(en|zh|ja)/ ]]; then
               SRC=$(echo $FILE | cut -d'/' -f2)
               for LANG in ja zh en; do
                 if [ "$SRC" == "$LANG" ]; then continue; fi
-                
                 FULL_LANG=$(echo $LANG | sed 's/ja/Japanese/;s/zh/Chinese/;s/en/English/')
                 GLOBAL_STR=" [x] **$FULL_LANG ($LANG)** for **ALL** missing files"
                 INDIVIDUAL_STR=" [x] **$LANG** for \`$FILE\`"
-                
                 if [[ "$BODY" == *"$GLOBAL_STR"* ]] || [[ "$BODY" == *"$INDIVIDUAL_STR"* ]]; then
                   python docs/translation/translate.py -l $LANG --files "$FILE"
                 fi
@@ -99,21 +88,12 @@ jobs:
           done
 
       - name: Commit and Push
-        if: steps.pr_data.outputs.is_fork == 'false'
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          
-          # Check if there are changes in the docs directory
           if [[ -n $(git status --porcelain docs/) ]]; then
             git add docs/
             git commit -m "docs: automated translation via Gemini [skip ci]"
-            
-            # Rebase to handle any commits pushed by humans while the bot was working
             git pull --rebase origin ${{ steps.pr_data.outputs.head_ref }}
-            
-            # Push specifically to the PR head branch
             git push origin HEAD:refs/heads/${{ steps.pr_data.outputs.head_ref }}
-          else
-            echo "No translation changes to commit."
           fi
