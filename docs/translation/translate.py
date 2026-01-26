@@ -42,10 +42,12 @@ class StarRocksTranslator:
     def _read_file(self, path: str) -> str:
         with open(path, 'r', encoding='utf-8') as f:
             return f.read()
+
     def _load_dict_as_string(self, path: str) -> str:
         if not os.path.exists(path):
-            print(f"⚠️ Warning: Dictionary not found at {path}") # Add warning
+            print(f"::warning::Dictionary NOT found at: {path}") # <--- Tells you why it failed
             return ""
+        print(f"✅ Loaded dictionary from: {path}") # <--- Confirms success
         with open(path, 'r', encoding='utf-8') as f:
             data = yaml.safe_load(f)
             return "\n".join([f"{k}: {v}" for k, v in data.items()]) if data else ""
