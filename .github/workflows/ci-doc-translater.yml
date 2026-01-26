@@ -51,6 +51,11 @@ jobs:
           base_sha: ${{ steps.pr_data.outputs.base_ref }}
           json: true  # <--- FORCE JSON OUTPUT
 
+      - name: Debug Changed Files
+        run: |
+          echo "Files String: ${{ steps.changed-files.outputs.all_changed_files }}"
+          echo "Files JSON: ${{ steps.changed-files.outputs.all_changed_files_json }}"
+
       - name: Get Checkbox State
         id: get_checks
         uses: actions/github-script@v7

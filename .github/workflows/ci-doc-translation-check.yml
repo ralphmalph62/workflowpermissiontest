@@ -10,6 +10,11 @@ jobs:
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Checkout the PR's merge commit so we see the new files
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+          # Fetch history so changed-files can calculate the diff
+          fetch-depth: 0
 
       - name: Get Changed Files
         id: changed-files
@@ -20,6 +25,12 @@ jobs:
             docs/en/**/*.md*
             docs/zh/**/*.md*
             docs/ja/**/*.md*
+
+
+      - name: Debug Changed Files
+        run: |
+          echo "Files String: ${{ steps.changed-files.outputs.all_changed_files }}"
+          echo "Files JSON: ${{ steps.changed-files.outputs.all_changed_files_json }}"
 
       - name: Generate Checklist Body
         id: checklist
