@@ -48,12 +48,12 @@ jobs:
             const fs = require('fs');
             let files = [];
             try {
-              // FIX: Use 'all_changed_files' which now contains the JSON string
+              // FIX: Point to the standard output variable
               files = JSON.parse('${{ steps.changed-files.outputs.all_changed_files }}');
             } catch (e) {
               console.log("No files changed or invalid JSON");
             }
-
+            
             if (files.length === 0) {
               core.setOutput('body', 'No translatable files detected.');
               return;

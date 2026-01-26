@@ -72,12 +72,12 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           BODY: ${{ steps.get_checks.outputs.result }}
-          # FIX: Map FILES_JSON to the standard output variable
+          # FIX: Point to the standard output variable
           FILES_JSON: ${{ steps.changed-files.outputs.all_changed_files }}
         run: |
           pip install -r docs/translation/requirements.txt
-
-          # Use jq to iterate over the JSON array of files
+          
+          # This loop will now work because FILES_JSON contains the valid JSON string
           for FILE in $(echo "$FILES_JSON" | jq -r '.[]'); do
             # Only process files in docs/lang/ directories
             if [[ "$FILE" =~ ^docs/(en|zh|ja)/ ]]; then
