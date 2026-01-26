@@ -49,7 +49,7 @@ jobs:
         uses: tj-actions/changed-files@v44
         with:
           base_sha: ${{ steps.pr_data.outputs.base_ref }}
-          [cite_start]json: true  # <--- FORCE JSON OUTPUT [cite: 500]
+          json: true  # <--- FORCE JSON OUTPUT
 
       - name: Get Checkbox State
         id: get_checks
