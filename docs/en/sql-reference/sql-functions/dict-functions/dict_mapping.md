@@ -26,7 +26,7 @@ key_column_expr ::= <column_name> | <expr>
   - `[<db_name>.]<dict_table>`: The name of the dictionary table, which needs to be a Primary Key table. The supported data type is VARCHAR.
   - `key_column_expr_list`: The expression list for key columns in the dictionary table, including one or multiple `key_column_exprs`. The `key_column_expr` can be the name of a key column in the dictionary table, or a specific key or key expression.
 
-    This expression list needs to include all Primary Key columns of the dictionary table, which means the total number of expressions needs to match the total number of Primary Key columns in the dictionary table. So when the dictionary table uses Composite Primary Key, the expressions in this list needs to correspond to the Primary Key columns defined in the table schema by sequence. Multiple expressions in this list are separated by commas (`,`). And if a `key_column_expr` is a specific key or key expression, its type must match the type of the corresponding Primary Key column in the dictionary table.
+    This expression list needs to include all Primary Key columns of the dictionary table, which means the total number of expressions needs to match the total number of Primary Key columns in the dictionary table. So when the dictionary table uses composite primary key, the expressions in this list needs to correspond to the Primary Key columns defined in the table schema by sequence. Multiple expressions in this list are separated by commas (`,`). And if a `key_column_expr` is a specific key or key expression, its type must match the type of the corresponding Primary Key column in the dictionary table.
 
 - Optional parameters:
   - `<value_column>`: The name of the value column, which is also the mapping column. If the value column is not specified, the default value column is the AUTO_INCREMENT column of the dictionary table.  The value column can also be defined as any column in the dictionary table excluding auto-incremented columns and primary keys. The column's data type has no restrictions.
@@ -172,7 +172,7 @@ ERROR 1064 (HY000): Query failed if record not exist in dict table.
 
 **Example 5: If the dictionary table uses composite primary keys, all primary keys must be specified when querying.**
 
-1. Create a dictionary table with Composite Primary Keys and load simulated data into it.
+1. Create a dictionary table with composite primary keys and load simulated data into it.
 
       ```SQL
       MySQL [test]> CREATE TABLE dict2 (
@@ -180,7 +180,7 @@ ERROR 1064 (HY000): Query failed if record not exist in dict table.
           order_date DATE, 
           order_id_int BIGINT AUTO_INCREMENT
       )
-      PRIMARY KEY (order_uuid,order_date)  -- Composite Primary Key
+      PRIMARY KEY (order_uuid,order_date)  -- composite primary Key
       DISTRIBUTED BY HASH (order_uuid,order_date)
       ;
       Query OK, 0 rows affected (0.02 sec)
@@ -201,7 +201,7 @@ ERROR 1064 (HY000): Query failed if record not exist in dict table.
       3 rows in set (0.01 sec)
       ```
 
-2. Query the value mapped to the key in the dictionary table. Because the dictionary table has Composite Primary Keys, all primary keys need to be specified in `dict_mapping`.
+2. Query the value mapped to the key in the dictionary table. Because the dictionary table has composite primary keys, all primary keys need to be specified in `dict_mapping`.
 
       ```SQL
       SELECT dict_mapping('dict2', 'a1', cast('2023-11-22' as DATE));
