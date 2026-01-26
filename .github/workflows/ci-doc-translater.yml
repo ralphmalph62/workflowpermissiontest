@@ -77,6 +77,10 @@ jobs:
           FILES_JSON: ${{ steps.changed-files.outputs.all_changed_files }}
         run: |
           pip install -r docs/translation/requirements.txt
+
+          echo "DEBUG:"
+          echo $FILES_JSON
+          echo "END DEBUG"
           
           # This loop will now work because FILES_JSON contains the valid JSON string
           for FILE in $(echo "$FILES_JSON" | jq -r '.[]'); do
