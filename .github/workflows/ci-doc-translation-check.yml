@@ -46,14 +46,14 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            // Parse JSON properly to avoid string splitting errors
             let files = [];
             try {
-              files = JSON.parse('${{ steps.changed-files.outputs.all_changed_files_json }}');
+              // FIX: Use 'all_changed_files' which now contains the JSON string
+              files = JSON.parse('${{ steps.changed-files.outputs.all_changed_files }}');
             } catch (e) {
               console.log("No files changed or invalid JSON");
             }
-            
+
             if (files.length === 0) {
               core.setOutput('body', 'No translatable files detected.');
               return;
