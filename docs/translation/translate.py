@@ -18,7 +18,8 @@ except Exception as e:
     raise RuntimeError("Failed to initialize Gemini client.") from e
 
 MODEL_NAME = "gemini-2.0-flash" 
-CONFIG_BASE_PATH = "./docs/translation/configs"
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+CONFIG_BASE_PATH = os.path.join(SCRIPT_DIR, "configs")
 
 LANG_MAP = {
     "en": "English",
@@ -41,9 +42,9 @@ class StarRocksTranslator:
     def _read_file(self, path: str) -> str:
         with open(path, 'r', encoding='utf-8') as f:
             return f.read()
-
     def _load_dict_as_string(self, path: str) -> str:
         if not os.path.exists(path):
+            print(f"⚠️ Warning: Dictionary not found at {path}") # Add warning
             return ""
         with open(path, 'r', encoding='utf-8') as f:
             data = yaml.safe_load(f)
