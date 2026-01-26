@@ -82,8 +82,8 @@ jobs:
           echo $FILES_JSON
           echo "END DEBUG"
           
-          # This loop will now work because FILES_JSON contains the valid JSON string
-          for FILE in $(echo "$FILES_JSON" | jq -r '.[]'); do
+          # Use sed to remove the backslashes before parsing
+          for FILE in $(echo "$FILES_JSON" | sed 's/\\"/"/g' | jq -r '.[]'); do
             # Only process files in docs/lang/ directories
             if [[ "$FILE" =~ ^docs/(en|zh|ja)/ ]]; then
               SRC=$(echo $FILE | cut -d'/' -f2)
