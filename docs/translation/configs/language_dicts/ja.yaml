@@ -145,8 +145,7 @@ shared-nothing: 共有なし
 object storage: オブジェクトストレージ
 logical view: ビュー
 join: ジョイン
-distributed architecture: &da 分散アーキテクチャ
-distributed-architecture: *da
+distributed architecture: 分散アーキテクチャ
 query plan: &qp クエリプラン
 query planning: *qp
 query analysis: *qp
