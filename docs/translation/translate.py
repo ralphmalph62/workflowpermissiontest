@@ -39,10 +39,38 @@ class StarRocksTranslator:
         dict_path = f"{CONFIG_BASE_PATH}/language_dicts/{target_lang}.yaml"
         self.dictionary_str = self._load_dict_as_string(dict_path)
 
+        synonyms_path = f"{CONFIG_BASE_PATH}/synonymns.yaml"
+        self.synonyms = self._load_yaml_as_dict(synonymns_path)
+
     def _read_file(self, path: str) -> str:
         with open(path, 'r', encoding='utf-8') as f:
             return f.read()
 
+    def _load_yaml_as_dict(self, path: str) -> dict:
+        if not os.path.exists(path):
+            print(f"::warning::Synonyms file not found at: {path}. Skipping normalization.")
+            return {}
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f)
+                if isinstance(data, dict):
+                    print(f"✅ Loaded {len(data)} synonym rules from {path}")
+                    return data
+                return {}
+        except Exception as e:
+            print(f"::error::Failed to parse synonyms YAML: {e}")
+            return {}
+    
+    def normalize_content(self, text: str) -> str:
+        if not self.synonyms:
+            return text
+            
+        for bad, good in self.synonyms.items():
+            # Create a case-insensitive regex pattern to match whole words
+            pattern = re.compile(r'\b' + re.escape(bad) + r'\b', re.IGNORECASE)
+            text = pattern.sub(good, text)        
+        return text
+    
     def _load_dict_as_string(self, path: str) -> str:
         if not os.path.exists(path):
             print(f"::warning::Dictionary NOT found at: {path}") # <--- Tells you why it failed
