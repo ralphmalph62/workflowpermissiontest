@@ -39,8 +39,8 @@ class StarRocksTranslator:
         dict_path = f"{CONFIG_BASE_PATH}/language_dicts/{target_lang}.yaml"
         self.dictionary_str = self._load_dict_as_string(dict_path)
 
-        synonyms_path = f"{CONFIG_BASE_PATH}/synonymns.yaml"
-        self.synonyms = self._load_yaml_as_dict(synonymns_path)
+        synonyms_path = f"{CONFIG_BASE_PATH}/synonyms.yaml"
+        self.synonyms = self._load_yaml_as_dict(synonyms_path)
 
     def _read_file(self, path: str) -> str:
         with open(path, 'r', encoding='utf-8') as f:
