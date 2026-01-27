@@ -58,7 +58,7 @@ class StarRocksTranslator:
 
     def translate_file(self, input_file: str):
         if not os.path.exists(input_file):
-            print(f"Warning: Input file not found: {input_file}")
+            print(f"::error::File not found: {input_file}")
             return
         
         source_lang = "en"
@@ -79,13 +79,17 @@ class StarRocksTranslator:
                               .replace("${source_lang}", source_lang_full)
                               .replace("${target_lang}", self.target_lang_full)
                               .replace("${dictionary}", self.dictionary_str))
-        
-        current_human_prompt = (self.human_template 
-                                + f"\n\n### CONTENT TO TRANSLATE ###\n\n{self._read_file(input_file)}")
-
         if self.dry_run:
             print(f"🔍 [DRY RUN] {source_lang_full} -> {self.target_lang_full}")
             return
+        
+        original_content = self._read_file(input_file)
+        # This is where 'high-concurrency' becomes 'high concurrency'
+        content_to_process = self.normalize_content(original_content)
+        current_human_prompt = (self.human_template 
+                                + f"\n\n### CONTENT TO TRANSLATE ###\n\n{content_to_process}")
+
+
 
         print(f"🚀 Translating {input_file} to {output_file}...")
         try:
