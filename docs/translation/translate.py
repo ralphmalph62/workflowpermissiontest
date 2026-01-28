@@ -135,9 +135,9 @@ class StarRocksTranslator:
         abs_input = os.path.abspath(input_file)
         output_file = abs_input.replace(f"/docs/{source_lang}/", f"/docs/{self.target_lang}/")
         
-        if os.path.exists(output_file) and os.path.getmtime(output_file) >= os.path.getmtime(abs_input):
-            print(f"⏩ Skipping {output_file}: Target is up to date.")
-            return
+        #if os.path.exists(output_file) and os.path.getmtime(output_file) >= os.path.getmtime(abs_input):
+            #print(f"⏩ Skipping {output_file}: Target is up to date.")
+            #return
 
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
