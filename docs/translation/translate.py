@@ -19,7 +19,7 @@ except Exception as e:
     raise RuntimeError("Failed to initialize Gemini client.") from e
 
 # NEW: Use 1.5-flash for stability and speed
-MODEL_NAME = "gemini-1.5-flash-002" 
+MODEL_NAME = "gemini-2.0-flash" 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_BASE_PATH = os.path.join(SCRIPT_DIR, "configs")
 
@@ -161,8 +161,8 @@ class StarRocksTranslator:
         print(f"🚀 Translating {input_file} to {output_file}...")
         
         # NEW: RETRY LOGIC for 429 Errors
-        max_retries = 3
-        base_delay = 2 # seconds
+        max_retries = 5
+        base_delay = 5 # seconds
         translated_text = ""
         
         for attempt in range(max_retries):
