@@ -1,45 +1,36 @@
 name: Translation Status Check
 on:
-  pull_request:
+  pull_request_target: # <--- CHANGED: Gives Write Perms for Forks
     paths: ['docs/en/**', 'docs/zh/**', 'docs/ja/**']
 
 jobs:
   report:
     runs-on: ubuntu-latest
     permissions:
-      pull-requests: write
+      pull-requests: write # Explicitly request write access
+      contents: read       # We only need to read the code
     steps:
-      # STEP 1: Checkout the Base Branch (Main) to get clean git history for the diff
-      - name: Checkout Base
+      # 1. Checkout the PR's Merge Commit so we can see the NEW files
+      - name: Checkout PR Code
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.base.ref }}
+          # Critical: Checkout the merge commit, not the default 'main'
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
           fetch-depth: 0
 
-      # STEP 2: Detect changes using the clean history
+      # 2. Get Changed Files (Compares PR vs Base)
       - name: Get Changed Files
         id: changed-files
         uses: tj-actions/changed-files@v44
         with:
+          base_sha: ${{ github.event.pull_request.base.ref }}
           json: true
           files: |
             docs/en/**/*.md*
             docs/zh/**/*.md*
             docs/ja/**/*.md*
 
-      - name: Debug Changed Files
-        run: |
-          echo "Files String: ${{ steps.changed-files.outputs.all_changed_files }}"
-          echo "Files JSON: ${{ steps.changed-files.outputs.all_changed_files_json }}"
-
-      # STEP 3: Checkout the PR Merge Commit to see the actual new file content
-      - name: Checkout PR Merge
-        uses: actions/checkout@v4
-        with:
-          ref: refs/pull/${{ github.event.pull_request.number }}/merge
-          fetch-depth: 0
-
-      # STEP 4: Run your script (now has the file list AND the file content)
+      # 3. Generate Checklist (Same logic as before)
       - name: Generate Checklist Body
         id: checklist
         uses: actions/github-script@v7
@@ -48,12 +39,9 @@ jobs:
             const fs = require('fs');
             let files = [];
             try {
-              // FIX: Point to the standard output variable
               files = JSON.parse('${{ steps.changed-files.outputs.all_changed_files }}');
-            } catch (e) {
-              console.log("No files changed or invalid JSON");
-            }
-            
+            } catch (e) { console.log("No files detected"); }
+
             if (files.length === 0) {
               core.setOutput('body', 'No translatable files detected.');
               return;
@@ -75,6 +63,7 @@ jobs:
               let fileChecklist = "";
               targets.forEach(lang => {
                 const targetPath = file.replace(`docs/${sourceLang}/`, `docs/${lang}/`);
+                // This works because we checked out the merge commit
                 if (!fs.existsSync(targetPath)) {
                   fileChecklist += `- [ ] **${lang}** for \`${file}\`\n`;
                 }

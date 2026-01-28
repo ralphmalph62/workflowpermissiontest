@@ -11,6 +11,7 @@ jobs:
       contents: write
       pull-requests: write
     steps:
+      # ... (User verification steps remain the same) ...
       - name: Get list of docs-maintainers
         run: |
           DOC_MEMBERSHIP_PAT=${{ secrets.DOC_MEMBERSHIP_PAT || secrets.GITHUB_TOKEN }}
@@ -21,19 +22,13 @@ jobs:
       - name: Verify approver membership
         id: verify-approver
         run: |
-            APPROVER="${{ github.event.comment.user.login }}"
-            if grep -q --line-regexp "$APPROVER" allowlisted_users.txt; then
-              echo "is_allowlisted=true" >> $GITHUB_OUTPUT
-            else
-              echo "::error::User $APPROVER is not authorized."
-              exit 1
-            fi
-
-      - name: Checkout PR
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: refs/pull/${{ github.event.issue.number }}/head
+          APPROVER="${{ github.event.comment.user.login }}"
+          if grep -q --line-regexp "$APPROVER" allowlisted_users.txt; then
+            echo "is_allowlisted=true" >> $GITHUB_OUTPUT
+          else
+            echo "::error::User $APPROVER is not authorized."
+            exit 1
+          fi
 
       - name: Get PR Information
         id: pr_data
@@ -42,19 +37,35 @@ jobs:
             "${{ github.event.issue.pull_request.url }}")
           echo "base_ref=$(echo $PR_JSON | jq -r '.base.ref')" >> $GITHUB_OUTPUT
           echo "head_ref=$(echo $PR_JSON | jq -r '.head.ref')" >> $GITHUB_OUTPUT
-          echo "is_fork=$(echo $PR_JSON | jq -r '.head.repo.fork')" >> $GITHUB_OUTPUT
+          echo "head_repo_name=$(echo $PR_JSON | jq -r '.head.repo.full_name')" >> $GITHUB_OUTPUT
+
+      # SECURITY FIX 1: Checkout the Fork to a subfolder
+      - name: Checkout PR (Untrusted Content)
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ steps.pr_data.outputs.head_repo_name }}
+          ref: ${{ steps.pr_data.outputs.head_ref }}
+          path: pr_code   # <--- Keep their code isolated
+          fetch-depth: 0
+
+      # SECURITY FIX 2: Checkout YOUR Main branch to get the trusted script
+      - name: Checkout Trusted Tools
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }} # Your Base Repo
+          ref: main
+          path: trusted_tools # <--- Where the safe script lives
+          sparse-checkout: |
+            docs/translation/
 
       - name: Get Changed Files
         id: changed-files
         uses: tj-actions/changed-files@v44
         with:
+          path: pr_code # <--- Look for changes in their code
           base_sha: ${{ steps.pr_data.outputs.base_ref }}
-          json: true  # <--- FORCE JSON OUTPUT
-
-      - name: Debug Changed Files
-        run: |
-          echo "Files String: ${{ steps.changed-files.outputs.all_changed_files }}"
-          echo "Files JSON: ${{ steps.changed-files.outputs.all_changed_files_json }}"
+          json: true
 
       - name: Get Checkbox State
         id: get_checks
@@ -65,7 +76,6 @@ jobs:
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number,
             });
-            // FIX: Match the header exactly as it appears in PR #63
             const report = comments.find(c => c.body.includes('### 🌎 Translation Required?'));
             return report ? report.body : '';
 
@@ -73,18 +83,12 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           BODY: ${{ steps.get_checks.outputs.result }}
-          # FIX: Point to the standard output variable
           FILES_JSON: ${{ steps.changed-files.outputs.all_changed_files }}
         run: |
-          pip install -r docs/translation/requirements.txt
-
-          echo "DEBUG:"
-          echo $FILES_JSON
-          echo "END DEBUG"
+          # Install requirements from TRUSTED tools
+          pip install -r trusted_tools/docs/translation/requirements.txt
           
-          # Use sed to remove the backslashes before parsing
           for FILE in $(echo "$FILES_JSON" | sed 's/\\"/"/g' | jq -r '.[]'); do
-            # Only process files in docs/lang/ directories
             if [[ "$FILE" =~ ^docs/(en|zh|ja)/ ]]; then
               SRC=$(echo $FILE | cut -d'/' -f2)
               for LANG in ja zh en; do
@@ -94,23 +98,30 @@ jobs:
                 GLOBAL_STR=" [x] **$FULL_LANG ($LANG)** for **ALL** missing files"
                 INDIVIDUAL_STR=" [x] **$LANG** for \`$FILE\`"
                 
-                # Check for matches
                 if [[ "$BODY" == *"$GLOBAL_STR"* ]] || [[ "$BODY" == *"$INDIVIDUAL_STR"* ]]; then
                   echo "🚀 Starting translation for $FILE to $LANG"
-                  python docs/translation/translate.py -l $LANG --files "$FILE"
+                  
+                  # SECURITY FIX 3: Run TRUSTED script against UNTRUSTED file path
+                  # Note: We prepend pr_code/ to the file path
+                  python trusted_tools/docs/translation/translate.py -l $LANG --files "pr_code/$FILE"
                 fi
               done
             fi
           done
 
       - name: Commit and Push
-        if: steps.pr_data.outputs.is_fork == 'false'
         run: |
+          # Go into the PR directory to run git commands
+          cd pr_code
+          
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
           if [[ -n $(git status --porcelain docs/) ]]; then
             git add docs/
             git commit -m "docs: automated translation via Gemini [skip ci]"
             git pull --rebase origin ${{ steps.pr_data.outputs.head_ref }}
             git push origin HEAD:refs/heads/${{ steps.pr_data.outputs.head_ref }}
+          else
+            echo "No translation changes to commit."
           fi
