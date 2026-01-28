@@ -12,16 +12,17 @@ permissions:
   issues: write
 
 jobs:
-  PRs_needing_attention:
-    name: docs-maintainer PRs
+  Weekly_info_for_docs_team:
+    env:
+      POSTHOG_TOKEN: ${{ secrets.POSTHOG_PERSONAL_API_KEY }}
+      ALGOLIA_TOKEN: ${{ secrets.ALGOLIA_ANALYTICS_KEY }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
 
       - name: List PRs with docs-maintainer Label
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eo pipefail # Ensure the script fails on any command error
           echo "## PRs that need attention" > feedback.md
@@ -29,13 +30,7 @@ jobs:
           echo "Listing PRs with label: $LABEL" >> feedback.md
           gh pr list --label "$LABEL" --json title,url --jq '.[] | "\(.title) - \(.url)"' >> feedback.md
 
-  grab_feedback_from_posthog:
-    name: Pull feedback using API
-    runs-on: ubuntu-latest
-    env:
-      POSTHOG_TOKEN: ${{ secrets.POSTHOG_PERSONAL_API_KEY }}
-    steps:
-      - name: Run PostHog script
+      - name: Collect feedback
         run: |
           set -eo pipefail # Ensure the script fails on any command error
           echo "## Feedback from readers" >> feedback.md
@@ -53,12 +48,6 @@ jobs:
             https://app.posthog.com/api/projects/48961/query \
             | jq -r '.results | to_entries[] | "- [ ] \(.value[2])", "  feedback: \(.value[3])", "  Rating: \(.value[4])", "  timestamp: \(.value[1])"' >> feedback.md
 
-  check_Algolia_usage:
-    name: Algolia usage
-    runs-on: ubuntu-latest
-    env:
-      ALGOLIA_TOKEN: ${{ secrets.ALGOLIA_ANALYTICS_KEY }}
-    steps:
       - name: Run Algolia scripts
         run: |
           set -eo pipefail # Ensure the script fails on any command error
@@ -84,12 +73,6 @@ jobs:
            | jq -r '.searches | to_entries[] | "- [ ] \(.value.search)", "  failures this week: \(.value.count)"' \
            >> feedback.md
 
-  Generate_issue_for_doc_team:
-    if: ${{ always() }}
-    needs: [grab_feedback_from_posthog, check_Algolia_usage, PRs_needing_attention,  ]
-    name: Report
-    runs-on: ubuntu-latest
-    steps:
       - name: Create issue from file
         id: weekly-feedback-report
         uses: peter-evans/create-issue-from-file@ceef9be92406ace67ab5421f66570acf213ec395
