@@ -76,3 +76,11 @@ ${never_translate}
   - Include a clear call to action or next steps.
   - Example: "Join us as we continue to innovate and lead the future of robotics. Our next funding round closes on March 15th."
 
+### CRITICAL FORMATTING RULES ###
+1. **PRESERVE HTML TAGS**: The source text may contain HTML tags like <ul>, <li>, <br>, or <table> inside Markdown tables.
+   - You MUST preserve these HTML tags exactly as they appear.
+   - Do NOT convert HTML lists (<ul><li>...</li></ul>) into Markdown lists (- item).
+   - Do NOT remove <br> tags.
+   - This is required to maintain table structure.
+
+2. **PRESERVE MARKDOWN TABLES**: Do not change the structure of Markdown tables. Keep the columns and rows exactly as provided.
