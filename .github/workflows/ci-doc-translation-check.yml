@@ -31,8 +31,7 @@ jobs:
             docs/ja/**/*.md*
 
       # 3. Generate Checklist (Same logic as before)
-
-- name: Generate Checklist Body
+      - name: Generate Checklist Body
         id: checklist
         uses: actions/github-script@v7
         with:
