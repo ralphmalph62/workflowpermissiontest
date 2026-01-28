@@ -26,7 +26,7 @@ jobs:
         run: |
           set -eo pipefail # Ensure the script fails on any command error
           echo "## PRs that need attention" > feedback.md
-          LABEL="docs-maintainer"  # Replace with your specific label
+          export LABEL="docs-maintainer"  # Replace with your specific label
           echo "Listing PRs with label: $LABEL" >> feedback.md
           gh pr list --label "$LABEL" --json title,url --jq '.[] | "\(.title) - \(.url)"' >> feedback.md
 
