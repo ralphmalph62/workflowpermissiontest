@@ -26,9 +26,9 @@ jobs:
         run: |
           set -eo pipefail # Ensure the script fails on any command error
           echo "## PRs that need attention" > feedback.md
-          echo "Listing PRs with label: docs-maintainer" >> feedback.md
           gh pr list --label docs-maintainer --json title,url --jq '.[] | "\(.title) - \(.url)"'
           gh pr list --label docs-maintainer --json title,url --jq '.[] | "\(.title) - \(.url)"' >> feedback.md
+          echo "Listing PRs with label: docs-maintainer" >> feedback.md
 
       - name: Collect feedback
         run: |
