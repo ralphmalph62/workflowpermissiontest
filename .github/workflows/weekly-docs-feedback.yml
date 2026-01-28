@@ -34,7 +34,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       POSTHOG_TOKEN: ${{ secrets.POSTHOG_PERSONAL_API_KEY }}
-      ALGOLIA_TOKEN: ${{ secrets.ALGOLIA_ANALYTICS_KEY }}
     steps:
       - name: Run PostHog script
         run: |
@@ -55,6 +54,11 @@ jobs:
             | jq -r '.results | to_entries[] | "- [ ] \(.value[2])", "  feedback: \(.value[3])", "  Rating: \(.value[4])", "  timestamp: \(.value[1])"' >> feedback.md
 
   check_Algolia_usage:
+    name: Algolia usage
+    runs-on: ubuntu-latest
+    env:
+      ALGOLIA_TOKEN: ${{ secrets.ALGOLIA_ANALYTICS_KEY }}
+    steps:
       - name: Run Algolia scripts
         run: |
           set -eo pipefail # Ensure the script fails on any command error
@@ -81,6 +85,9 @@ jobs:
            >> feedback.md
 
   Generate_issue_for_doc_team:
+    name: Report
+    runs-on: ubuntu-latest
+    steps:
       - name: Create issue from file
         if: always
         id: weekly-feedback-report
