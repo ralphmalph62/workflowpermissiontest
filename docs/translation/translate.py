@@ -19,7 +19,7 @@ except Exception as e:
     raise RuntimeError("Failed to initialize Gemini client.") from e
 
 # NEW: Use 1.5-flash for stability and speed
-MODEL_NAME = "gemini-1.5-flash" 
+MODEL_NAME = "gemini-1.5-flash-002" 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_BASE_PATH = os.path.join(SCRIPT_DIR, "configs")
 
