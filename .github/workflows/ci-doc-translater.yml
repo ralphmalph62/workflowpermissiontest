@@ -11,7 +11,6 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      # ... (User verification steps remain the same) ...
       - name: Get list of docs-maintainers
         run: |
           DOC_MEMBERSHIP_PAT=${{ secrets.DOC_MEMBERSHIP_PAT || secrets.GITHUB_TOKEN }}
@@ -30,6 +29,32 @@ jobs:
             exit 1
           fi
 
+      - name: Acknowledge Command
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: 'eyes'
+            });
+
+      # NEW STEP: Adds the direct link to the running workflow
+      - name: Post Run Link
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const newBody = context.payload.comment.body + `\n\n**Maintainer:** monitor the translation in the [GitHub Actions tab](${runUrl})`;
+            
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              body: newBody
+            });
+
       - name: Get PR Information
         id: pr_data
         run: |
@@ -39,23 +64,21 @@ jobs:
           echo "head_ref=$(echo $PR_JSON | jq -r '.head.ref')" >> $GITHUB_OUTPUT
           echo "head_repo_name=$(echo $PR_JSON | jq -r '.head.repo.full_name')" >> $GITHUB_OUTPUT
 
-      # SECURITY FIX 1: Checkout the Fork to a subfolder
       - name: Checkout PR (Untrusted Content)
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ steps.pr_data.outputs.head_repo_name }}
           ref: ${{ steps.pr_data.outputs.head_ref }}
-          path: pr_code   # <--- Keep their code isolated
+          path: pr_code
           fetch-depth: 0
 
-      # SECURITY FIX 2: Checkout YOUR Main branch to get the trusted script
       - name: Checkout Trusted Tools
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.repository }} # Your Base Repo
+          repository: ${{ github.repository }}
           ref: main
-          path: trusted_tools # <--- Where the safe script lives
+          path: trusted_tools
           sparse-checkout: |
             docs/translation/
 
@@ -63,7 +86,7 @@ jobs:
         id: changed-files
         uses: tj-actions/changed-files@v44
         with:
-          path: pr_code # <--- Look for changes in their code
+          path: pr_code
           base_sha: ${{ steps.pr_data.outputs.base_ref }}
           json: true
 
@@ -85,7 +108,6 @@ jobs:
           BODY: ${{ steps.get_checks.outputs.result }}
           FILES_JSON: ${{ steps.changed-files.outputs.all_changed_files }}
         run: |
-          # Install requirements from TRUSTED tools
           pip install -r trusted_tools/docs/translation/requirements.txt
           
           for FILE in $(echo "$FILES_JSON" | sed 's/\\"/"/g' | jq -r '.[]'); do
@@ -100,9 +122,6 @@ jobs:
                 
                 if [[ "$BODY" == *"$GLOBAL_STR"* ]] || [[ "$BODY" == *"$INDIVIDUAL_STR"* ]]; then
                   echo "🚀 Starting translation for $FILE to $LANG"
-                  
-                  # SECURITY FIX 3: Run TRUSTED script against UNTRUSTED file path
-                  # Note: We prepend pr_code/ to the file path
                   python trusted_tools/docs/translation/translate.py -l $LANG --files "pr_code/$FILE"
                 fi
               done
@@ -111,9 +130,7 @@ jobs:
 
       - name: Commit and Push
         run: |
-          # Go into the PR directory to run git commands
           cd pr_code
-          
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
