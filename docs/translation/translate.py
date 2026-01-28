@@ -119,8 +119,37 @@ class StarRocksTranslator:
             return "\n".join([f"{k}: {v}" for k, v in data.items()]) if data else ""
 
     def validate_mdx(self, original: str, translated: str) -> bool:
+        # Regex to capture tags like <br/>, <Note>, </Steps>, <TabItem value="...">
+        # We only care about the tag NAME for counting, usually.
+        # But for strict safety, let's grab the whole tag structure.
         tag_pattern = r'<\s*/?\s*[A-Za-z_][A-Za-z0-9_.-]*\b[^<>]*?/?>'
-        return len(re.findall(tag_pattern, original)) == len(re.findall(tag_pattern, translated))
+        
+        orig_tags = re.findall(tag_pattern, original)
+        trans_tags = re.findall(tag_pattern, translated)
+        
+        if len(orig_tags) == len(trans_tags):
+            return True
+            
+        print(f"\n❌ TAG MISMATCH DETAILS:")
+        print(f"   - Original Tag Count: {len(orig_tags)}")
+        print(f"   - Translated Tag Count: {len(trans_tags)}")
+        
+        # Simple diff to show the user what happened
+        import collections
+        orig_counts = collections.Counter(orig_tags)
+        trans_counts = collections.Counter(trans_tags)
+        
+        all_tags = set(orig_counts.keys()) | set(trans_counts.keys())
+        
+        issues_found = False
+        for tag in all_tags:
+            diff = trans_counts[tag] - orig_counts[tag]
+            if diff != 0:
+                issues_found = True
+                status = "EXTRA" if diff > 0 else "MISSING"
+                print(f"   - {status} {abs(diff)}x: {tag}")
+                
+        return False
 
     def translate_file(self, input_file: str):
         if not os.path.exists(input_file):
