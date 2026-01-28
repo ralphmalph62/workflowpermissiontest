@@ -3,82 +3,81 @@ displayed_sidebar: docs
 ---
 import QSOverview from '../_assets/commonMarkdown/quickstart-overview-tip.mdx'
 
-# Architecture
-in a fork
+# アーキテクチャ
 
-StarRocks has a robust architecture. The system consists of only two types of components; frontends and backends. The frontend nodes are called **FE**s or Coordinator nodes. There are two types of backend nodes, **BE**s, and **CN**s (Compute Nodes). BEs are deployed when local storage for data is used, and CNs are deployed when data is stored on object storage or HDFS. StarRocks does not rely on any external components, simplifying deployment and maintenance. Nodes can be horizontally scaled without service downtime. In addition, StarRocks has a replica mechanism for metadata and service data, which increases data reliability and efficiently prevents single points of failure (SPOFs).
+StarRocks は、堅牢なアーキテクチャを備えています。システムは、フロントエンドとバックエンドの 2 種類のコンポーネントのみで構成されています。フロントエンドノードは、**FE** または Coordinator ノードと呼ばれます。バックエンドノードには、**BE** と **CN** (コンピュートノード) の 2 種類があります。BE は、データのローカルストレージが使用される場合にデプロイされ、CN は、データがオブジェクトストレージまたは HDFS に保存される場合にデプロイされます。StarRocks は外部コンポーネントに依存しないため、デプロイとメンテナンスが簡素化されます。ノードは、サービスを停止することなく水平方向に拡張できます。さらに、StarRocks にはメタデータとサービスデータのレプリカメカニズムがあり、データの信頼性を高め、単一障害点 (SPOF) を効率的に防止します。
 
-StarRocks is compatible with MySQL protocols and supports standard SQL. Users can easily connect to StarRocks from MySQL clients to gain instant and valuable insights.
+StarRocks は MySQL プロトコルと互換性があり、標準 SQL をサポートしています。ユーザーは MySQL クライアントから StarRocks に簡単に接続して、即座に価値のある洞察を得ることができます。
 
-## Architecture choices
+## アーキテクチャの選択
 
-StarRocks supports shared-nothing (Each BE has a portion of the data on its local storage) and shared-data (all data on object storage or HDFS and each CN has only cache on local storage). You can decide where the data is stored based on your needs. 
+StarRocks は、共有なし (各 BE はローカルストレージにデータの一部を保持) と共有データ (すべてのデータはオブジェクトストレージまたは HDFS にあり、各 CN はローカルストレージにキャッシュのみを保持) をサポートしています。ニーズに応じて、データの保存場所を決定できます。
 
 ![Architecture choices](../_assets/architecture_choices.png)
 
-### Shared-nothing
+### 共有なし
 
-Local storage provides improved query latency for real-time queries.
+ローカルストレージは、リアルタイムクエリの query performance を改善します。
 
-As a typical massively parallel processing (MPP) database StarRocks supports the shared-nothing architecture. In this architecture, BEs are responsible for both data storage and computation. Direct access to local data on the BE mode allows for local computation, avoiding data transfer and data copying, and providing ultra-fast query and analytics performance. This architecture supports multi-replica data storage, enhancing the cluster's ability to handle high-concurrency queries and ensuring data reliability. It is well-suited for scenarios that pursue optimal query performance.
+一般的な超並列処理 (MPP) データベースとして、StarRocks は shared-nothing アーキテクチャをサポートしています。このアーキテクチャでは、BE は data storage と計算の両方を担当します。BE モードでローカルデータに直接アクセスすることで、ローカル計算が可能になり、データ転送とデータコピーを回避し、超高速なクエリと分析パフォーマンスを提供します。このアーキテクチャは、マルチレプリカ data storage をサポートし、高並行クエリを処理するクラスタの能力を高め、データの信頼性を確保します。最適な query performance を追求するシナリオに適しています。
 
-![shared-data-arch](../_assets/shared-nothing.png)
+![shared-data-arch](../_assets/shared nothing.png)
 
-#### Nodes
+#### ノード
 
-In the shared-nothing architecture, StarRocks consists of two types of nodes: FEs and BEs.
+shared-nothing アーキテクチャでは、StarRocks は FE と BE の 2 種類のノードで構成されています。
 
-- FEs are responsible for metadata management and constructing execution plans.
-- BEs execute query plans and store data. BEs utilize local storage to accelerate queries and the multi-replica mechanism to ensure high data availability.
+- FE は、メタデータ管理と実行プランの構築を担当します。
+- BE は、クエリプランを実行し、データを保存します。BE は、ローカルストレージを利用してクエリを高速化し、マルチレプリカメカニズムを利用して高いデータ可用性を確保します。
 
 ##### FE
 
-FEs are responsible for metadata management, client connection management, query planning, and query scheduling. Each FE uses BDB JE (Berkeley DB Java Edition) to store and maintain a complete copy of the metadata in its memory, ensuring consistent services across all FEs. FEs can work as the leader, followers, and observers. If the leader node crashes, with followers electing a leader based on the Raft protocol.
+FE は、メタデータ管理、クライアント接続管理、クエリプラン、およびクエリスケジューリングを担当します。各 FE は BDB JE (Berkeley DB Java Edition) を使用して、メモリ内のメタデータの完全なコピーを保存および維持し、すべての FE で一貫したサービスを保証します。FE は、leader、follower、および observer として機能できます。leader ノードがクラッシュした場合、follower は Raft プロトコルに基づいて leader を選出します。
 
 | **FE Role** | **Metadata management**                                                                                                                                                                                                                                                                                                                                                                                                | **Leader election**                |
 | ----------- |------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------| ---------------------------------- |
-| Leader      | The leader FE reads and writes metadata. Follower and observer FEs can only read metadata. They route metadata write requests to the leader FE. The leader FE updates the metadata and then uses the Raft protocol to synchronize the metadata changes to the follower and observer FEs. Data writes are considered successful only after the metadata changes are synchronized to more than half of the follower FEs. | The leader FE, technically speaking, is also a follower node and is elected from follower FEs. To perform leader election, more than half of the follower FEs in the cluster must be active. When the leader FE fails, follower FEs will start another round of leader election. |
-| Follower    | Followers can only read metadata. They synchronize and replay logs from the leader FE to update metadata.                                                                                                                                                                                                                                                                                                              | Followers participate in leader election, which requires more than half of the followers in the cluster be active. |
-| Observer   | Observers synchronize and replay logs from the leader FE to update metadata.                                                                                                                                                                                                                                                                                                                                           | Observers are mainly used to increase the query concurrency of the cluster. Observers do not participate in leader election and therefore, will not add leader selection pressure to the cluster.|
+| Leader      | leader FE はメタデータを読み書きします。Follower および observer FE は、メタデータの読み取りのみ可能です。メタデータの書き込みリクエストを leader FE にルーティングします。leader FE はメタデータを更新し、Raft プロトコルを使用してメタデータの変更を follower および observer FE に同期します。データの書き込みは、メタデータの変更が follower FE の半数以上に同期された後にのみ成功と見なされます。 | 正確に言うと、leader FE は follower ノードでもあり、follower FE から選出されます。leader 選出を実行するには、クラスタ内の follower FE の半数以上がアクティブである必要があります。leader FE が失敗すると、follower FE は別の leader 選出を開始します。 |
+| Follower    | Follower はメタデータの読み取りのみ可能です。leader FE からログを同期および再生して、メタデータを更新します。                                                                                                                                                                                                                                                                                                              | Follower は leader 選出に参加します。これには、クラスタ内の follower の半数以上がアクティブである必要があります。 |
+| Observer   | Observer は leader FE からログを同期および再生して、メタデータを更新します。                                                                                                                                                                                                                                                                                                                                           | Observer は主に、クラスタのクエリ並行性を高めるために使用されます。Observer は leader 選出に参加しないため、クラスタに leader 選択のプレッシャーを追加することはありません。|
 
 ##### BE
 
-BEs are responsible for data storage and SQL execution.
+BE は、data storage と SQL 実行を担当します。
 
-- Data storage: BEs have equivalent data storage capabilities. FEs distribute data to BEs based on predefined rules. BEs transform the ingested data, write the data into the required format, and generate indexes for the data.
+- Data storage: BE は同等の data storage 機能を備えています。FE は、事前定義されたルールに基づいてデータを BE に分散します。BE は、取り込まれたデータを変換し、必要な形式でデータを書き込み、データのインデックスを生成します。
 
-- SQL execution: FEs parse each SQL query into a logical execution plan according to the semantics of the query, and then transform the logical plan into physical execution plans that can be executed on BEs. BEs that store the destination data execute the query. This eliminates the need for data transmission and copy, achieving high query performance.
+- SQL 実行: FE は、クエリのセマンティクスに従って各 SQL クエリを論理実行プランに解析し、次にその論理プランを BE で実行できる物理実行プランに変換します。宛先データを保存する BE がクエリを実行します。これにより、データ伝送とコピーの必要がなくなり、高い query performance が実現します。
 
-### Shared-data
+### 共有データ
 
-Object storage and HDFS provide cost, reliability, and scalability benefits. In addition to the scalability of storage, CN nodes can be added and removed without the need to rebalance data since storage and compute are separate. 
+オブジェクトストレージと HDFS は、コスト、信頼性、およびスケーラビリティの利点を提供します。ストレージのスケーラビリティに加えて、ストレージとコンピュートが分離されているため、データをリバランスする必要なく CN ノードを追加および削除できます。
 
-In the shared-data architecture, BEs are replaced with "compute nodes (CNs)" which are responsible only for data compute tasks and caching hot data. Data is stored in low-cost and reliable remote storage systems such as Amazon S3, Google Cloud Storage, Azure Blob Storage, MinIO, etc. When the cache is hit, query performance is comparable to that of the shared-nothing architecture. CN nodes can be added or removed on demand within seconds. This architecture reduces storage cost, ensures better resource isolation, and high elasticity and scalability.
+共有データアーキテクチャでは、BE は「コンピュートノード (CN)」に置き換えられます。CN は、データ計算タスクとホットデータのキャッシュのみを担当します。データは、Amazon S3、Google Cloud Storage、Azure Blob Storage、MinIO などの低コストで信頼性の高いリモートストレージシステムに保存されます。キャッシュがヒットすると、query performance は shared-nothing アーキテクチャのパフォーマンスに匹敵します。CN ノードは、必要に応じて数秒以内に追加または削除できます。このアーキテクチャは、ストレージコストを削減し、より優れたリソース分離、高い弾力性とスケーラビリティを保証します。
 
-The shared-data architecture maintains as simple an architecture as its shared-nothing counterpart. It consists of only two types of nodes: FE and CN. The only difference is users have to provision backend object storage.
+共有データアーキテクチャは、shared-nothing アーキテクチャと同様にシンプルなアーキテクチャを維持します。FE と CN の 2 種類のノードのみで構成されています。唯一の違いは、ユーザーがバックエンドオブジェクトストレージをプロビジョニングする必要があることです。
 
 ![shared-data-arch](../_assets/shared-data.png)
 
-#### Nodes
+#### ノード
 
-Coordinator nodes in the shared-data architecture provide the same functions as FEs in the shared-nothing architecture.
+共有データアーキテクチャの Coordinator ノードは、shared-nothing アーキテクチャの FE と同じ機能を提供します。
 
-BEs are replaced with CNs (Compute Nodes), and the storage function is offloaded to object storage or HDFS. CNs are stateless compute nodes that perform all the functions of BEs, except for the storage of data.
+BE は CN (コンピュートノード) に置き換えられ、ストレージ機能はオブジェクトストレージまたは HDFS にオフロードされます。CN は、データの保存を除く、BE のすべての機能を実行するステートレスコンピュートノードです。
 
-#### Storage
+#### ストレージ
 
-StarRocks shared-data clusters support two storage solutions: object storage (for example, AWS S3, Google GCS, Azure Blob Storage, or MinIO) and HDFS.
+StarRocks 共有データクラスタは、オブジェクトストレージ (たとえば、AWS S3、Google GCS、Azure Blob Storage、または MinIO) と HDFS の 2 つのストレージソリューションをサポートしています。
 
-In a shared-data cluster, the data file format remains consistent with that of a shared-nothing cluster (featuring coupled storage and compute). Data is organized into segment files, and various indexing technologies are reused in cloud-native tables, which are tables used specifically in shared-data clusters.
+共有データクラスタでは、データファイル形式は、共有なしクラスタ (結合されたストレージとコンピュートを特徴とする) のデータファイル形式と一貫しています。データは Segment ファイルに編成され、さまざまなインデックス作成テクノロジーが Cloud-native table で再利用されます。Cloud-native table は、共有データクラスタで特に使用されるテーブルです。
 
-#### Cache
+#### キャッシュ
 
-StarRocks shared-data clusters decouple data storage and computation, allowing each to scale independently, thereby reducing costs and enhancing elasticity. However, this architecture can affect query performance.
+StarRocks 共有データクラスタは、data storage と計算を分離し、それぞれが独立してスケーリングできるようにすることで、コストを削減し、弾力性を高めます。ただし、このアーキテクチャは query performance に影響を与える可能性があります。
 
-To mitigate the impact, StarRocks establishes a multi-tiered data access system encompassing memory, local disk, and remote storage to better meet various business needs.
+影響を軽減するために、StarRocks は、さまざまなビジネスニーズをより適切に満たすために、メモリ、ローカルディスク、およびリモートストレージを含む多層データアクセスシステムを確立します。
 
-Queries against hot data scan the cache directly and then the local disk, while cold data needs to be loaded from the object storage into the local cache to accelerate subsequent queries. By keeping hot data close to compute units, StarRocks achieves truly high-performance computation and cost-effective storage. Moreover, access to cold data has been optimized with data prefetch strategies, effectively eliminating performance limits for queries.
+ホットデータに対するクエリは、キャッシュを直接スキャンしてからローカルディスクをスキャンしますが、コールドデータは、後続のクエリを高速化するために、オブジェクトストレージからローカルキャッシュにロードする必要があります。ホットデータをコンピュートユニットの近くに保持することで、StarRocks は真に高性能な計算と費用対効果の高いストレージを実現します。さらに、コールドデータへのアクセスは、データプリフェッチ戦略で最適化されており、クエリのパフォーマンス制限を効果的に排除します。
 
-Caching can be enabled when creating tables. If caching is enabled, data will be written to both the local disk and backend object storage. During queries, the CN nodes first read data from the local disk. If the data is not found, it will be retrieved from the backend object storage and simultaneously cached on the local disk.
+キャッシュは、テーブルの作成時に有効にできます。キャッシュを有効にすると、データはローカルディスクとバックエンドオブジェクトストレージの両方に書き込まれます。クエリ中、CN ノードは最初にローカルディスクからデータを読み取ります。データが見つからない場合は、バックエンドオブジェクトストレージから取得され、同時にローカルディスクにキャッシュされます。
 
 <QSOverview />
