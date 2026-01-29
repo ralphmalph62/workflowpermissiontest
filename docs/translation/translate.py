@@ -3,7 +3,8 @@ import sys
 import yaml
 import argparse
 import re
-import time  # <--- NEW: Import time
+import time
+import collections # <--- NEW: For counting tags in validation
 from google import genai
 from google.genai import types
 
@@ -19,7 +20,7 @@ try:
 except Exception as e:
     raise RuntimeError("Failed to initialize Gemini client.") from e
 
-# NEW: Use 1.5-flash for stability and speed
+# Use gemini-2.0-flash for stability and speed
 MODEL_NAME = "gemini-2.0-flash" 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_BASE_PATH = os.path.join(SCRIPT_DIR, "configs")
@@ -35,7 +36,11 @@ class StarRocksTranslator:
         self.target_lang = target_lang
         self.target_lang_full = LANG_MAP.get(target_lang, target_lang)
         self.dry_run = dry_run
+        
+        # Tracking for the final report
         self.has_errors = False
+        self.successes = [] # <--- NEW
+        self.failures = []  # <--- NEW
         
         # 1. Load Templates
         self.system_template = self._read_file(f"{CONFIG_BASE_PATH}/system_prompt.txt")
@@ -120,42 +125,40 @@ class StarRocksTranslator:
             data = yaml.safe_load(f)
             return "\n".join([f"{k}: {v}" for k, v in data.items()]) if data else ""
 
-    def validate_mdx(self, original: str, translated: str) -> bool:
-        # Regex to capture tags like <br/>, <Note>, </Steps>, <TabItem value="...">
-        # We only care about the tag NAME for counting, usually.
-        # But for strict safety, let's grab the whole tag structure.
+    # UPDATED: Returns tuple (is_valid, error_message)
+    def validate_mdx(self, original: str, translated: str) -> tuple[bool, str]:
         tag_pattern = r'<\s*/?\s*[A-Za-z_][A-Za-z0-9_.-]*\b[^<>]*?/?>'
         
         orig_tags = re.findall(tag_pattern, original)
         trans_tags = re.findall(tag_pattern, translated)
         
         if len(orig_tags) == len(trans_tags):
-            return True
+            return True, ""
             
-        print(f"\n❌ TAG MISMATCH DETAILS:")
-        print(f"   - Original Tag Count: {len(orig_tags)}")
-        print(f"   - Translated Tag Count: {len(trans_tags)}")
+        # Build the detailed error report
+        error_msg = [f"❌ TAG MISMATCH DETAILS:"]
+        error_msg.append(f"   - Original Tag Count: {len(orig_tags)}")
+        error_msg.append(f"   - Translated Tag Count: {len(trans_tags)}")
         
-        # Simple diff to show the user what happened
-        import collections
         orig_counts = collections.Counter(orig_tags)
         trans_counts = collections.Counter(trans_tags)
         
         all_tags = set(orig_counts.keys()) | set(trans_counts.keys())
         
-        issues_found = False
         for tag in all_tags:
             diff = trans_counts[tag] - orig_counts[tag]
             if diff != 0:
-                issues_found = True
                 status = "EXTRA" if diff > 0 else "MISSING"
-                print(f"   - {status} {abs(diff)}x: {tag}")
+                error_msg.append(f"   - {status} {abs(diff)}x: {tag}")
                 
-        return False
+        return False, "\n".join(error_msg)
 
     def translate_file(self, input_file: str):
         if not os.path.exists(input_file):
-            print(f"::error::File not found: {input_file}")
+            msg = f"File not found: {input_file}"
+            print(f"::error::{msg}")
+            self.failures.append({"file": input_file, "error": msg})
+            self.has_errors = True
             return
         
         source_lang = "en"
@@ -166,9 +169,10 @@ class StarRocksTranslator:
         abs_input = os.path.abspath(input_file)
         output_file = abs_input.replace(f"/docs/{source_lang}/", f"/docs/{self.target_lang}/")
         
-        #if os.path.exists(output_file) and os.path.getmtime(output_file) >= os.path.getmtime(abs_input):
-            #print(f"⏩ Skipping {output_file}: Target is up to date.")
-            #return
+        # Timestamp check disabled for CI
+        # if os.path.exists(output_file) and os.path.getmtime(output_file) >= os.path.getmtime(abs_input):
+        #     print(f"⏩ Skipping {output_file}: Target is up to date.")
+        #     return
 
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
@@ -191,49 +195,64 @@ class StarRocksTranslator:
 
         print(f"🚀 Translating {input_file} to {output_file}...")
         
-        # NEW: RETRY LOGIC for 429 Errors
         max_retries = 5
-        base_delay = 5 # seconds
+        base_delay = 5 
         translated_text = ""
         
-        for attempt in range(max_retries):
-            try:
-                response = client.models.generate_content(
-                    model=MODEL_NAME,
-                    config=types.GenerateContentConfig(system_instruction=system_instruction, temperature=0.0),
-                    contents=current_human_prompt
-                )
-                
-                if not response.text:
-                    print(f"⚠️ Warning: Gemini returned empty response for {input_file} (Blocked?).")
-                    return
+        try:
+            for attempt in range(max_retries):
+                try:
+                    response = client.models.generate_content(
+                        model=MODEL_NAME,
+                        config=types.GenerateContentConfig(system_instruction=system_instruction, temperature=0.0),
+                        contents=current_human_prompt
+                    )
                     
-                translated_text = response.text.strip()
-                break # Success
-                
-            except Exception as e:
-                # Check for 429 Resource Exhausted
-                if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-                    if attempt < max_retries - 1:
-                        wait_time = base_delay * (2 ** attempt) # 2s, 4s, 8s
-                        print(f"⏳ Hit rate limit (429). Retrying in {wait_time}s...")
-                        time.sleep(wait_time)
+                    if not response.text:
+                        print(f"⚠️ Warning: Gemini returned empty response for {input_file} (Blocked?).")
                         continue
-                
-                print(f"❌ Gemini API failed for {input_file}: {e}")
-                return
+                        
+                    translated_text = response.text.strip()
+                    break # Success
+                    
+                except Exception as e:
+                    if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                        if attempt < max_retries - 1:
+                            wait_time = base_delay * (2 ** attempt)
+                            print(f"⏳ Hit rate limit (429). Retrying in {wait_time}s...")
+                            time.sleep(wait_time)
+                            continue
+                    raise e # Re-raise other errors to the outer block
+            
+            else:
+                 raise RuntimeError("Max retries exceeded.")
 
-        # Clean Markdown fences if Gemini adds them
+        except Exception as e:
+            msg = f"Gemini API failed: {str(e)}"
+            print(f"❌ {msg}")
+            self.failures.append({"file": input_file, "error": msg})
+            self.has_errors = True
+            return
+
+        # Clean Markdown fences
         if translated_text.startswith("```"):
             lines = translated_text.splitlines()
             if lines[0].startswith("```"): lines = lines[1:]
             if lines and lines[-1].startswith("```"): lines = lines[:-1]
             translated_text = "\n".join(lines).strip()
 
-        if not self.validate_mdx(original_content, translated_text):
-            print(f"❌ Validation warning for {input_file}: Tag mismatch detected.")
+        # Validation
+        is_valid, validation_msg = self.validate_mdx(original_content, translated_text)
+        
+        if not is_valid:
+            print(f"❌ Validation FAILED for {input_file}")
+            print(validation_msg)
+            self.failures.append({"file": input_file, "error": validation_msg})
             self.has_errors = True
+        else:
+            self.successes.append(input_file)
 
+        # Always save file so user can inspect
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(translated_text)
         print(f"✅ Saved: {output_file}")
@@ -251,10 +270,29 @@ def main():
             if f.endswith(('.md', '.mdx')):
                 translator.translate_file(f)
 
+    # --- GENERATE SUMMARY REPORT ---
+    report_path = "translation_summary.md"
+    with open(report_path, "w", encoding="utf-8") as f:
+        f.write("### 📝 Translation Report\n\n")
+        
+        if translator.successes:
+            f.write("#### ✅ Successfully Translated\n")
+            for success in translator.successes:
+                f.write(f"- `{success}`\n")
+            f.write("\n")
+            
+        if translator.failures:
+            f.write("#### ❌ Failures (Action Required)\n")
+            f.write("The following files failed validation or API checks. **These files were NOT committed.**\n\n")
+            for failure in translator.failures:
+                f.write(f"**File:** `{failure['file']}`\n")
+                f.write("```text\n")
+                f.write(failure['error'])
+                f.write("\n```\n\n")
+
     if translator.has_errors:
         print("\n🚨 Translation finished with errors. Marking workflow as FAILED.")
         sys.exit(1)
 
 if __name__ == "__main__":
     main()
-
