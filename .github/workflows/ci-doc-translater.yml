@@ -128,6 +128,29 @@ jobs:
             fi
           done
 
+      # Post the report to the PR
+      - name: Post Translation Report
+        if: always() # Run even if translation failed
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            // The python script writes to the root of the runner's workspace
+            const summaryPath = 'translation_summary.md';
+            
+            if (fs.existsSync(summaryPath)) {
+              const summary = fs.readFileSync(summaryPath, 'utf8');
+              
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: summary
+              });
+            } else {
+              console.log("No summary file found.");
+            }
+
       - name: Commit and Push
         run: |
           cd pr_code
