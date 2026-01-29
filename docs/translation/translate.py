@@ -4,7 +4,7 @@ import yaml
 import argparse
 import re
 import time
-import collections # <--- NEW: For counting tags in validation
+import collections 
 from google import genai
 from google.genai import types
 
@@ -39,8 +39,8 @@ class StarRocksTranslator:
         
         # Tracking for the final report
         self.has_errors = False
-        self.successes = [] # <--- NEW
-        self.failures = []  # <--- NEW
+        self.successes = [] 
+        self.failures = []  
         
         # 1. Load Templates
         self.system_template = self._read_file(f"{CONFIG_BASE_PATH}/system_prompt.txt")
@@ -125,7 +125,6 @@ class StarRocksTranslator:
             data = yaml.safe_load(f)
             return "\n".join([f"{k}: {v}" for k, v in data.items()]) if data else ""
 
-    # UPDATED: Returns tuple (is_valid, error_message)
     def validate_mdx(self, original: str, translated: str) -> tuple[bool, str]:
         tag_pattern = r'<\s*/?\s*[A-Za-z_][A-Za-z0-9_.-]*\b[^<>]*?/?>'
         
@@ -157,6 +156,7 @@ class StarRocksTranslator:
         if not os.path.exists(input_file):
             msg = f"File not found: {input_file}"
             print(f"::error::{msg}")
+            # Even if input missing, we log it. Since output path is hypothetical, use input.
             self.failures.append({"file": input_file, "error": msg})
             self.has_errors = True
             return
@@ -167,12 +167,12 @@ class StarRocksTranslator:
         source_lang_full = LANG_MAP.get(source_lang, source_lang)
 
         abs_input = os.path.abspath(input_file)
+        # Determine the Output Path
         output_file = abs_input.replace(f"/docs/{source_lang}/", f"/docs/{self.target_lang}/")
-        
-        # Timestamp check disabled for CI
-        # if os.path.exists(output_file) and os.path.getmtime(output_file) >= os.path.getmtime(abs_input):
-        #     print(f"⏩ Skipping {output_file}: Target is up to date.")
-        #     return
+        # Relative path for cleaner reporting (e.g. pr_code/docs/ja/...)
+        rel_output_file = output_file
+        if os.getcwd() in output_file:
+             rel_output_file = os.path.relpath(output_file, os.getcwd())
 
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
@@ -222,7 +222,7 @@ class StarRocksTranslator:
                             print(f"⏳ Hit rate limit (429). Retrying in {wait_time}s...")
                             time.sleep(wait_time)
                             continue
-                    raise e # Re-raise other errors to the outer block
+                    raise e 
             
             else:
                  raise RuntimeError("Max retries exceeded.")
@@ -230,7 +230,8 @@ class StarRocksTranslator:
         except Exception as e:
             msg = f"Gemini API failed: {str(e)}"
             print(f"❌ {msg}")
-            self.failures.append({"file": input_file, "error": msg})
+            # CHANGED: Report output_file (target) instead of input_file
+            self.failures.append({"file": rel_output_file, "error": msg})
             self.has_errors = True
             return
 
@@ -247,10 +248,12 @@ class StarRocksTranslator:
         if not is_valid:
             print(f"❌ Validation FAILED for {input_file}")
             print(validation_msg)
-            self.failures.append({"file": input_file, "error": validation_msg})
+            # CHANGED: Report output_file (target) instead of input_file
+            self.failures.append({"file": rel_output_file, "error": validation_msg})
             self.has_errors = True
         else:
-            self.successes.append(input_file)
+            # CHANGED: Report output_file (target) on success too
+            self.successes.append(rel_output_file)
 
         # Always save file so user can inspect
         with open(output_file, 'w', encoding='utf-8') as f:
@@ -296,3 +299,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
