@@ -146,11 +146,26 @@ class StarRocksTranslator:
             data = yaml.safe_load(f)
             return "\n".join([f"{k}: {v}" for k, v in data.items()]) if data else ""
 
+    def _strip_code_blocks(self, text: str) -> str:
+        # Regex for fenced code and inline code
+        # Captures: ```...``` OR `...`
+        code_pattern = r'(```[\s\S]*?```|`[^`\n]+`)'
+        
+        # Replace all code blocks with a safe placeholder (empty string or space)
+        # This ensures the tag validator sees ONLY the plain text and structural tags.
+        return re.sub(code_pattern, '', text)
+
     def validate_mdx(self, original: str, translated: str) -> tuple[bool, str]:
+        # 1. Strip code blocks so we don't count <tags> inside examples/code
+        clean_orig = self._strip_code_blocks(original)
+        clean_trans = self._strip_code_blocks(translated)
+
+        # 2. Define the Tag Regex (Same as before)
         tag_pattern = r'<\s*/?\s*[A-Za-z_][A-Za-z0-9_.-]*\b[^<>]*?/?>'
         
-        orig_tags = re.findall(tag_pattern, original)
-        trans_tags = re.findall(tag_pattern, translated)
+        # 3. Find tags in the CLEANED text only
+        orig_tags = re.findall(tag_pattern, clean_orig)
+        trans_tags = re.findall(tag_pattern, clean_trans)
         
         if len(orig_tags) == len(trans_tags):
             return True, ""
