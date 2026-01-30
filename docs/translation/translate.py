@@ -146,45 +146,68 @@ class StarRocksTranslator:
             data = yaml.safe_load(f)
             return "\n".join([f"{k}: {v}" for k, v in data.items()]) if data else ""
 
-    def _strip_code_blocks(self, text: str) -> str:
-        # Regex for fenced code and inline code
-        # Captures: ```...``` OR `...`
-        code_pattern = r'(```[\s\S]*?```|`[^`\n]+`)'
-        
-        # Replace all code blocks with a safe placeholder (empty string or space)
-        # This ensures the tag validator sees ONLY the plain text and structural tags.
-        return re.sub(code_pattern, '', text)
-
     def validate_mdx(self, original: str, translated: str) -> tuple[bool, str]:
-        # 1. Strip code blocks so we don't count <tags> inside examples/code
+        # 1. Strip code blocks so we don't count <tags> inside examples
         clean_orig = self._strip_code_blocks(original)
         clean_trans = self._strip_code_blocks(translated)
 
-        # 2. Define the Tag Regex (Same as before)
-        tag_pattern = r'<\s*/?\s*[A-Za-z_][A-Za-z0-9_.-]*\b[^<>]*?/?>'
+        # 2. Extract all tags into "Fingerprints"
+        # Regex breakdown:
+        # Group 1 (is_close): Matches "/" if it is a closing tag like </div>
+        # Group 2 (tag_name): Matches the name (e.g. div, FileTree.Item)
+        # Group 3 (attributes): Matches everything up to the end (ignored)
+        # Group 4 (is_self): Matches "/" if it ends like <... />
+        tag_pattern = r'<\s*(/?)\s*([A-Za-z_][A-Za-z0-9_.-]*)\b([^>]*?)(\s*/?)>'
         
-        # 3. Find tags in the CLEANED text only
-        orig_tags = re.findall(tag_pattern, clean_orig)
-        trans_tags = re.findall(tag_pattern, clean_trans)
+        def get_tag_fingerprints(text):
+            matches = re.findall(tag_pattern, text)
+            fingerprints = []
+            for is_close, tag_name, attrs, is_self in matches:
+                # Normalize logic:
+                if is_close:
+                    type_prefix = "CLOSE"
+                elif is_self.strip() == "/":
+                    type_prefix = "SELF"
+                else:
+                    type_prefix = "OPEN"
+                
+                fingerprints.append(f"{type_prefix}:{tag_name}")
+            return fingerprints
+
+        orig_fingerprints = get_tag_fingerprints(clean_orig)
+        trans_fingerprints = get_tag_fingerprints(clean_trans)
         
-        if len(orig_tags) == len(trans_tags):
-            return True, ""
+        # 3. Compare Counts
+        if len(orig_fingerprints) == len(trans_fingerprints):
+             # Deep check using Counter to ignore order
+             if collections.Counter(orig_fingerprints) == collections.Counter(trans_fingerprints):
+                 return True, ""
             
-        # Build the detailed error report
+        # 4. Build Error Report
         error_msg = [f"❌ TAG MISMATCH DETAILS:"]
-        error_msg.append(f"   - Original Tag Count: {len(orig_tags)}")
-        error_msg.append(f"   - Translated Tag Count: {len(trans_tags)}")
+        error_msg.append(f"   - Original Tag Count: {len(orig_fingerprints)}")
+        error_msg.append(f"   - Translated Tag Count: {len(trans_fingerprints)}")
         
-        orig_counts = collections.Counter(orig_tags)
-        trans_counts = collections.Counter(trans_tags)
+        orig_counts = collections.Counter(orig_fingerprints)
+        trans_counts = collections.Counter(trans_fingerprints)
         
         all_tags = set(orig_counts.keys()) | set(trans_counts.keys())
         
+        issues_found = False
         for tag in all_tags:
             diff = trans_counts[tag] - orig_counts[tag]
             if diff != 0:
+                issues_found = True
                 status = "EXTRA" if diff > 0 else "MISSING"
-                error_msg.append(f"   - {status} {abs(diff)}x: {tag}")
+                # tag looks like "OPEN:FileTree", make it readable for the error log
+                readable_tag = tag.replace("OPEN:", "<").replace("CLOSE:", "</").replace("SELF:", "<.../>")
+                if "OPEN" in tag: readable_tag += ">"
+                elif "CLOSE" in tag: readable_tag += ">"
+                
+                error_msg.append(f"   - {status} {abs(diff)}x: {readable_tag}")
+
+        if not issues_found:
+             return True, ""
                 
         return False, "\n".join(error_msg)
 
