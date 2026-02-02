@@ -233,12 +233,14 @@ class StarRocksTranslator:
         
         print(f"🚀 Translating {input_file} ({len(chunks)} chunks)...")
         
+        max_retries = 10  # Increased from 5 to 10 for better resilience
+        
         for i, chunk in enumerate(chunks):
             current_human_prompt = (self.human_template.replace("${target_language}", self.target_lang_full) 
                                     + f"\n\n### CONTENT TO TRANSLATE ###\n\n{chunk}")
             
             chunk_translated = ""
-            for attempt in range(5):
+            for attempt in range(max_retries):
                 try:
                     response = client.models.generate_content(
                         model=MODEL_NAME,
@@ -252,11 +254,21 @@ class StarRocksTranslator:
                     chunk_translated = response.text.strip()
                     break
                 except Exception as e:
-                    # Retry on 429, Resource Exhausted, or Empty Response
-                    is_retryable = "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e) or "empty response" in str(e).lower()
+                    error_str = str(e)
+                    # Updated retry logic to include 503 and UNAVAILABLE
+                    is_retryable = (
+                        "429" in error_str or 
+                        "RESOURCE_EXHAUSTED" in error_str or 
+                        "503" in error_str or 
+                        "UNAVAILABLE" in error_str or 
+                        "empty response" in error_str.lower()
+                    )
                     
-                    if is_retryable and attempt < 4:
-                        time.sleep(5 * (2 ** attempt))
+                    if is_retryable and attempt < max_retries - 1:
+                        # Exponential backoff with a cap at 60 seconds
+                        wait_time = min(5 * (2 ** attempt), 60)
+                        print(f"⚠️ API Error ({error_str}) on chunk {i+1}. Retrying in {wait_time}s... (Attempt {attempt+1}/{max_retries})")
+                        time.sleep(wait_time)
                         continue
                     
                     # If fatal or out of retries, fail the whole file
@@ -326,4 +338,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
