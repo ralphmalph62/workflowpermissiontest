@@ -124,7 +124,6 @@ class StarRocksTranslator:
         return re.sub(code_pattern, '', text)
 
     def _chunk_content(self, text: str) -> list[str]:
-        # 1. Mask code blocks to prevent splitting inside them
         code_pattern = r'(```[\s\S]*?```)'
         code_blocks = []
         
@@ -135,11 +134,9 @@ class StarRocksTranslator:
             
         masked_text = re.sub(code_pattern, replace_code, text)
 
-        # 2. Primary strategy: split by Level 2 through Level 5 headers
         chunks = re.split(r'(?m)^(?=#{2,5}\s)', masked_text)
         chunks = [c for c in chunks if c.strip()]
 
-        # 3. Fallback Strategy for large docs
         LARGE_DOC_THRESHOLD = 20000
         MAX_FALLBACK_CHUNK_SIZE = 4000
 
@@ -167,7 +164,6 @@ class StarRocksTranslator:
             
             chunks = [c for c in fallback_chunks if c.strip()]
 
-        # 4. Restore code blocks
         final_chunks = []
         for chunk in chunks:
             def restore_code(match):
@@ -185,7 +181,6 @@ class StarRocksTranslator:
         
         tag_pattern = r'<(?!\!--)\s*/?\s*([A-Za-z_][A-Za-z0-9_.-]*)(?=[\s/>])[^>]*?>'
         
-        # VALIDATOR FIX: Whitelist common technical output words that look like tags
         IGNORED_TAGS = {"none", "unset", "nil", "generated", "br"}
 
         def get_tag_fingerprints(text):
@@ -229,10 +224,10 @@ class StarRocksTranslator:
     def _clean_model_output(self, chunk_translated: str) -> str:
         """
         Robustly cleans model output.
-        1. XML Extraction.
-        2. Nuclear Tag Cleanup.
-        3. Safe Unwrap (only unwraps specific markdown wrappers).
-        4. FENCE PARITY CHECK (Ensures code blocks are always closed).
+        1. Extract <chunk_to_translate>.
+        2. Aggressively strip Markdown code block wrappers.
+        3. Forcefully remove trailing fence if header was stripped (handles trailing filler).
+        4. Parity check.
         """
         match = re.search(r'<chunk_to_translate>(.*?)</chunk_to_translate>', chunk_translated, re.DOTALL)
         if match:
@@ -240,35 +235,39 @@ class StarRocksTranslator:
         
         chunk_translated = re.sub(r'</?chunk_to_translate>', '', chunk_translated).strip()
 
-        # Safe Unwrap
-        lines = chunk_translated.splitlines()
-        if not lines: return ""
-
-        start_idx = -1
-        first_line = lines[0].strip()
+        # 2. Aggressive Wrapper Stripping
+        # Case insensitive match for ```markdown or ```md at start
+        wrapper_pattern = r'(?i)^.*?```(markdown|md)\s*\n'
         
-        # Only unwrap if explicit markdown wrapper
-        if first_line.startswith("```markdown") or first_line.startswith("```md"):
-            start_idx = 0
-        elif len(lines) > 1 and (lines[1].strip().startswith("```markdown") or lines[1].strip().startswith("```md")):
-             start_idx = 1
-
-        if start_idx != -1:
-            end_idx = -1
-            if lines[-1].strip() == "```":
-                end_idx = len(lines) - 1
+        if re.search(wrapper_pattern, chunk_translated, re.DOTALL):
+            # If we found a wrapper header, we MUST remove the corresponding footer.
+            # We assume the footer is the LAST ``` in the text.
             
-            if end_idx != -1 and end_idx > start_idx:
-                chunk_translated = "\n".join(lines[start_idx+1:end_idx]).strip()
+            # First, strip the header
+            chunk_translated = re.sub(wrapper_pattern, '', chunk_translated, count=1)
+            
+            # Now find the last occurrence of ``` and strip it (plus anything after it)
+            # We use rrfind logic via regex substitution
+            # Matches: the last ``` followed by any text until end of string
+            chunk_translated = re.sub(r'```[^`]*$', '', chunk_translated, count=1)
+            
+            chunk_translated = chunk_translated.strip()
 
-        # FENCE PARITY CHECK
-        # Count total opening/closing fences. If odd, append a closing fence.
+        # 4. FENCE PARITY CHECK (Final Safety Net)
         fence_count = len(re.findall(r'(?m)^\s*```', chunk_translated))
-        
         if fence_count % 2 != 0:
             chunk_translated += "\n```"
                 
         return chunk_translated
+
+    def _final_clean(self, text: str) -> str:
+        lines = text.splitlines()
+        cleaned_lines = []
+        for line in lines:
+            if line.strip() in ["```markdown", "```md"]:
+                continue
+            cleaned_lines.append(line)
+        return "\n".join(cleaned_lines)
 
     def translate_file(self, input_file: str):
         if not os.path.exists(input_file):
@@ -347,6 +346,8 @@ class StarRocksTranslator:
             translated_chunks.append(chunk_translated)
 
         full_text = "\n\n".join(chunk.strip() for chunk in translated_chunks)
+        full_text = self._final_clean(full_text)
+
         is_valid, val_msg = self.validate_mdx(original_content, full_text)
         
         final_output_path = base_output_path if is_valid else f"{base_output_path}.invalid"
@@ -400,4 +401,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
