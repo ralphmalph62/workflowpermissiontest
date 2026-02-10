@@ -141,6 +141,12 @@ jobs:
                     -l \"$TARGET_LANG\" \
                     -i pr_code/$FILE \
                     -d pr_code/$OUTPUT_DIR"
+                  
+                  node trusted_tools/bin/cli.js translate \
+                    -s \"$SOURCE_LANG\" \
+                    -l \"$TARGET_LANG\" \
+                    -i pr_code/$FILE \
+                    -d pr_code/$OUTPUT_DIR
 
                 fi
               done
