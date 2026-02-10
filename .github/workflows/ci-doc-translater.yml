@@ -81,14 +81,16 @@ jobs:
           git remote add upstream https://github.com/${{ github.repository }}.git
           git fetch upstream ${{ steps.pr_data.outputs.base_sha }}
 
-      - name: Checkout Trusted Tools
+      - name: Checkout Trusted Tools from StarRocks/markdown-translator
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.repository }}
+          repository: starrocks/markdown-translator
           ref: main
           path: trusted_tools
-          sparse-checkout: |
-            docs/translation/
+      - name: Build Translation Tool
+        run: |
+          cd trusted_tools
+          npm install
 
       - name: Get Changed Files
         id: changed-files
@@ -115,22 +117,31 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           BODY: ${{ steps.get_checks.outputs.result }}
           FILES_JSON: ${{ steps.changed-files.outputs.all_changed_files }}
-        run: |
-          pip install -r trusted_tools/docs/translation/requirements.txt
-          
+        run: |          
           for FILE in $(echo "$FILES_JSON" | sed 's/\\"/"/g' | jq -r '.[]'); do
             if [[ "$FILE" =~ ^docs/(en|zh|ja)/ ]]; then
               SRC=$(echo $FILE | cut -d'/' -f2)
               for LANG in ja zh en; do
                 if [ "$SRC" == "$LANG" ]; then continue; fi
                 
-                FULL_LANG=$(echo $LANG | sed 's/ja/Japanese/;s/zh/Chinese/;s/en/English/')
-                GLOBAL_STR=" [x] **$FULL_LANG ($LANG)** for **ALL** missing/outdated files"
+                TARGET_LANG=$(echo $LANG | sed 's/ja/Japanese/;s/zh/Simplified\ Chinese/;s/en/English/')
+                SOURCE_LANG=$(echo $SRC | sed 's/ja/Japanese/;s/zh/Simplified\ Chinese/;s/en/English/')
+
+                GLOBAL_STR=" [x] **$TARGET_LANG ($LANG)** for **ALL** missing/outdated files"
                 INDIVIDUAL_STR=" [x] **$LANG** for \`$FILE\`"
                 
                 if [[ "$BODY" == *"$GLOBAL_STR"* ]] || [[ "$BODY" == *"$INDIVIDUAL_STR"* ]]; then
                   echo "🚀 Starting translation for $FILE to $LANG"
-                  python trusted_tools/docs/translation/translate.py -l $LANG --files "pr_code/$FILE"
+
+                  OUTPUT_PATH=$(echo "$FILE" | sed "s/^\(docs\/\)${SRC}\//\1${LANG}\//")
+                  OUTPUT_DIR=$(dirname "$OUTPUT_PATH")
+
+                  node trusted_tools/bin/cli.js translate \
+                    -s $SOURCE_LANG \
+                    -l $TARGET_LANG \
+                    -i $FILE \
+                    -d $OUTPUT_DIR
+
                 fi
               done
             fi
