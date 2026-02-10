@@ -124,10 +124,7 @@ jobs:
               for LANG in ja zh en; do
                 if [ "$SRC" == "$LANG" ]; then continue; fi
                 
-                TARGET_LANG=$(echo $LANG | sed 's/ja/Japanese/;s/zh/Simplified Chinese/;s/en/English/')
-                SOURCE_LANG=$(echo $SRC | sed 's/ja/Japanese/;s/zh/Simplified Chinese/;s/en/English/')
-
-                GLOBAL_STR=" [x] **$TARGET_LANG ($LANG)** for **ALL** missing/outdated files"
+                GLOBAL_STR=" [x] **$LANG** for **ALL** missing/outdated files"
                 INDIVIDUAL_STR=" [x] **$LANG** for \`$FILE\`"
                 
                 if [[ "$BODY" == *"$GLOBAL_STR"* ]] || [[ "$BODY" == *"$INDIVIDUAL_STR"* ]]; then
@@ -137,14 +134,14 @@ jobs:
                   OUTPUT_DIR=$(dirname "$OUTPUT_PATH")
 
                   echo "node trusted_tools/bin/cli.js translate \
-                    -s \"$SOURCE_LANG\" \
-                    -l \"$TARGET_LANG\" \
+                    -s $SRC \
+                    -l $LANG \
                     -i pr_code/$FILE \
                     -d pr_code/$OUTPUT_DIR"
                   
                   node trusted_tools/bin/cli.js translate \
-                    -s \"$SOURCE_LANG\" \
-                    -l \"$TARGET_LANG\" \
+                    -s $SRC \
+                    -l $LANG \
                     -i pr_code/$FILE \
                     -d pr_code/$OUTPUT_DIR
 
