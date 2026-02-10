@@ -19,7 +19,7 @@ Data loading is the process of cleansing and transforming raw data from various 
 
 StarRocks provides a variety of options for data loading:
 
-- Loading methods: Insert, Stream Load, Broker Load, Pipe, Routine Load, and Spark Load
+- Loading methods: Push,Insert, Stream Load, Broker Load, Pipe, Routine Load, and Spark Load
 - Ecosystem tools: StarRocks Connector for Apache Kafka® (Kafka connector for short), StarRocks Connector for Apache Spark™ (Spark connector for short), StarRocks Connector for Apache Flink® (Flink connector for short), and other tools such as SMT, DataX, CloudCanal, and Kettle Connector
 - API: Stream Load transaction interface
 
