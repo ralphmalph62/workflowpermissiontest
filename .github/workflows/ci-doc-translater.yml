@@ -199,6 +199,13 @@ jobs:
 
             # Push changes
             git push origin HEAD:refs/heads/${{ steps.pr_data.outputs.head_ref }}
+
+            # Add label to the PR after a successful push
+            curl -s -X POST \
+              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/labels" \
+              -d '{"labels":["translation_added"]}'
           else
             echo "No translation changes to commit."
           fi
