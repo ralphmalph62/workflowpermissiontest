@@ -1,6 +1,7 @@
 name: Translation Status Check
 on:
   pull_request_target: # <--- CHANGED: Gives Write Perms for Forks
+    types: [opened, synchronize, labeled]
     paths: ['docs/en/**', 'docs/zh/**', 'docs/ja/**']
   workflow_run:
     workflows: ["Translation Runner"]
@@ -8,7 +9,9 @@ on:
 
 jobs:
   report:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    if: |
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+      (github.event_name == 'pull_request_target' && (github.event.action != 'labeled' || github.event.label.name == 'translation_added'))
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write # Explicitly request write access
