@@ -72,7 +72,6 @@ jobs:
 
       - name: Update comment after tag is added
         uses: peter-evans/create-or-update-comment@e8674b075228eee787fea43ef493e45ece1004c9 # v5.0.0
-        if: ${{ steps.waitForVercel.outputs.url }}
         with:
           comment-id: ${{ steps.createInitialComment.outputs.comment-id }}
           issue-number: ${{ github.event.number }}
@@ -89,4 +88,3 @@ jobs:
             Notice: Ensure you have installed the latest nightly Rust toolchain. If you haven't installed it yet, please see https://www.rust-lang.org/tools/install to learn how to download Rustup and install Rust.
 
             or load it into the REPL:
-            ${{ steps.waitForVercel.outputs.url }}/repl/?pr=${{ github.event.number }}
