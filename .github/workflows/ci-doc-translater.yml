@@ -199,6 +199,26 @@ jobs:
 
             # Push changes
             git push origin HEAD:refs/heads/${{ steps.pr_data.outputs.head_ref }}
+            
+            echo "TRANSLATIONS_COMMITTED=true" >> $GITHUB_ENV
           else
             echo "No translation changes to commit."
+            echo "TRANSLATIONS_COMMITTED=false" >> $GITHUB_ENV
           fi
+
+      - name: Trigger Translation Check Update
+        if: env.TRANSLATIONS_COMMITTED == 'true'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.DOC_MEMBERSHIP_PAT }}
+          script: |
+            await github.rest.repos.createDispatchEvent({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              event_type: 'translation-complete',
+              client_payload: {
+                pr_number: context.issue.number,
+                base_sha: '${{ steps.pr_data.outputs.base_sha }}'
+              }
+            });
+            console.log('Triggered translation-complete event to update PR comment');
