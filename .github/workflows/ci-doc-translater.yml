@@ -117,7 +117,12 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           BODY: ${{ steps.get_checks.outputs.result }}
           FILES_JSON: ${{ steps.changed-files.outputs.all_changed_files }}
-        run: |          
+        run: |
+          # Initialize translation summary file
+          SUMMARY_FILE="translation_summary.md"
+          echo "## 🌐 Translation Summary" > $SUMMARY_FILE
+          echo "" >> $SUMMARY_FILE
+          
           for FILE in $(echo "$FILES_JSON" | sed 's/\\"/"/g' | jq -r '.[]'); do
             if [[ "$FILE" =~ ^docs/(en|zh|ja)/ ]]; then
               SRC=$(echo $FILE | cut -d'/' -f2)
@@ -129,15 +134,21 @@ jobs:
                 
                 if [[ "$BODY" == *"$GLOBAL_STR"* ]] || [[ "$BODY" == *"$INDIVIDUAL_STR"* ]]; then
                   echo "🚀 Starting translation for $FILE to $LANG"
-
+                  
+                  FILENAME=$(basename "$FILE")
                   OUTPUT_PATH=$(echo "$FILE" | sed "s/^\(docs\/\)${SRC}\//\1${LANG}\//")
                   OUTPUT_DIR=$(dirname "$OUTPUT_PATH")
                   
-                  node trusted_tools/bin/cli.js translate \
+                  # Run translation and capture exit code
+                  if node trusted_tools/bin/cli.js translate \
                     -s $SRC \
                     -l $LANG \
                     -i pr_code/$FILE \
-                    -d pr_code/$OUTPUT_DIR
+                    -d pr_code/$OUTPUT_DIR; then
+                    echo "- ✅ Translation of \`$FILENAME\` from **$SRC** to **$LANG** succeeded" >> $SUMMARY_FILE
+                  else
+                    echo "- ❌ Translation of \`$FILENAME\` from **$SRC** to **$LANG** failed" >> $SUMMARY_FILE
+                  fi
 
                 fi
               done
@@ -175,7 +186,7 @@ jobs:
 
           if [[ -n $(git status --porcelain docs/) ]]; then
             git add docs/
-            git commit -m "docs: automated translation via Gemini [skip ci]"
+            git commit -m "docs: automated translation via Gemini"
 
             # ------------------------------------------------------------------
             # CRITICAL AUTH FIX: Use PAT to push to Fork
