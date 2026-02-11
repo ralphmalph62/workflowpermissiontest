@@ -55,6 +55,23 @@ jobs:
               body: newBody
             });
 
+      - name: Remove translation_added label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                name: 'translation_added'
+              });
+            } catch (error) {
+              if (error.status !== 404) {
+                throw error;
+              }
+            }
+
       - name: Get PR Information
         id: pr_data
         run: |
