@@ -2,20 +2,61 @@ name: Translation Status Check
 on:
   pull_request_target: # <--- CHANGED: Gives Write Perms for Forks
     paths: ['docs/en/**', 'docs/zh/**', 'docs/ja/**']
+  workflow_run:
+    workflows: ["Translation Runner"]
+    types: [completed]
 
 jobs:
   report:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write # Explicitly request write access
       contents: read       # We only need to read the code
     steps:
+      - name: Resolve PR Context
+        id: pr_context
+        uses: actions/github-script@v7
+        with:
+          script: |
+            if (context.eventName !== 'workflow_run') {
+              core.setOutput('pr_number', context.issue.number);
+              core.setOutput('base_sha', context.payload.pull_request.base.sha);
+              return;
+            }
+
+            const prs = context.payload.workflow_run.pull_requests || [];
+            let prNumber = prs.length ? prs[0].number : null;
+
+            if (!prNumber) {
+              const { data } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                commit_sha: context.payload.workflow_run.head_sha
+              });
+              if (data.length) prNumber = data[0].number;
+            }
+
+            if (!prNumber) {
+              core.setFailed('Unable to resolve PR number for workflow_run.');
+              return;
+            }
+
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber
+            });
+
+            core.setOutput('pr_number', prNumber);
+            core.setOutput('base_sha', pr.base.sha);
+
       # 1. Checkout the PR's Merge Commit so we can see the NEW files
       - name: Checkout PR Code
         uses: actions/checkout@v4
         with:
           # Critical: Checkout the merge commit, not the default 'main'
-          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+          ref: refs/pull/${{ steps.pr_context.outputs.pr_number }}/merge
           fetch-depth: 0
 
       # 2. Get Changed Files (Compares PR vs Base)
@@ -23,7 +64,7 @@ jobs:
         id: changed-files
         uses: tj-actions/changed-files@v44
         with:
-          base_sha: ${{ github.event.pull_request.base.sha }}
+          base_sha: ${{ steps.pr_context.outputs.base_sha }}
           json: true
           files: |
             docs/en/**/*.md*
@@ -110,7 +151,7 @@ jobs:
         uses: peter-evans/find-comment@v3
         id: findcheckboxcomment
         with:
-          issue-number: ${{ github.event.pull_request.number }}
+          issue-number: ${{ steps.pr_context.outputs.pr_number }}
           comment-author: 'github-actions[bot]'
           body-includes: "### 🌎 Translation Required?"
 
@@ -118,7 +159,7 @@ jobs:
         uses: peter-evans/create-or-update-comment@v5
         with:
           comment-id: ${{ steps.findcheckboxcomment.outputs.comment-id }}
-          issue-number: ${{ github.event.pull_request.number }}
+          issue-number: ${{ steps.pr_context.outputs.pr_number }}
           body: ${{ steps.checklist.outputs.body }}
           edit-mode: replace
 
@@ -130,6 +171,6 @@ jobs:
             github.rest.issues.addLabels({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.issue.number,
+              issue_number: Number('${{ steps.pr_context.outputs.pr_number }}'),
               labels: ['docs-maintainer']
             });
