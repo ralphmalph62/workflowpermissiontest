@@ -100,7 +100,7 @@ jobs:
                 if [ "$has_zh" = true ]; then
                   auto_missing+="- [ ] zh en $rel_path"$'\n'
                 else
-                  manual_missing+="- zh en $rel_path"$'\n'
+                  manual_missing+="- en/$rel_path (required source for other translations)"$'\n'
                 fi
               fi
             
@@ -109,7 +109,7 @@ jobs:
                 if [ "$has_en" = true ]; then
                   auto_missing+="- [ ] en zh $rel_path"$'\n'
                 else
-                  manual_missing+="- en zh $rel_path"$'\n'
+                  manual_missing+="- en/$rel_path (required source for other translations)"$'\n'
                 fi
               fi
             
@@ -118,7 +118,7 @@ jobs:
                 if [ "$has_en" = true ]; then
                   auto_missing+="- [ ] en ja $rel_path"$'\n'
                 else
-                  manual_missing+="- en ja $rel_path"$'\n'
+                  manual_missing+="- en/$rel_path (required source for other translations)"$'\n'
                 fi
               fi
             fi
@@ -183,11 +183,11 @@ jobs:
           
           ### Missing Translations (Require manual translation)
           
-          ⚠️ **Note:** These translations cannot be auto-generated because no valid source file exists in this PR. They require manual translation.
+          ⚠️ **Note:** These translations cannot be auto-generated because the required source file does not exist in this PR. Please add the source file to enable automatic translation:
           
-          - No checkboxes are shown for manual-only items.
-          - **English** translations require a Chinese source file.
-          - **Chinese** and **Japanese** translations require an English source file.
+          - **English** (`en/...`) is required as source for all other translations.
+          - **Chinese** (`zh/...`) is required as source for English translations.
+          - Japanese can never be a source file.
           
           EOF
             cat manual_translations.txt >> comment_body.md
