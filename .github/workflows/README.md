@@ -33,12 +33,19 @@ The workflows work together to:
 
 **What it does:**
 - Verifies the commenter is a member of the `docs-maintainer` team
-- Identifies which translations are missing
+- Parses the translation check comment to identify which checkboxes are checked
+- Only generates translations for files with checked boxes
 - Checks out the [StarRocks/markdown-translator](https://github.com/StarRocks/markdown-translator) repository
-- Generates the missing translations
+- Generates the selected translations
 - Commits and pushes translations to the PR branch (for branch PRs)
 - For fork PRs, creates a patch file that can be downloaded and applied
 - Adds the `translations_added` label on success
+
+**How to use:**
+1. Wait for the "Check Translation Completeness" workflow to add a comment with checkboxes
+2. Check the boxes for the translations you want to generate
+3. Comment `/translate` on the PR
+4. The workflow will only translate the files you selected
 
 **Permissions required:**
 - Only members of the `docs-maintainer` GitHub team can trigger this workflow
@@ -163,24 +170,26 @@ To create the team:
 1. Developer opens PR with changes to `docs/en/myfile.md`
 2. **Check Translation Completeness** workflow runs:
    - Detects missing `docs/zh/myfile.md` and `docs/ja/myfile.md`
-   - Posts comment with checklist
+   - Posts comment with checklist showing auto-translatable options
    - Adds `needs_translation` label
-3. Docs maintainer comments `/translate`
-4. **Handle Translation Command** workflow runs:
+3. Docs maintainer checks the boxes for desired translations in the comment
+4. Docs maintainer comments `/translate`
+5. **Handle Translation Command** workflow runs:
    - Verifies maintainer permissions
-   - Generates translations using markdown-translator
+   - Reads which checkboxes are selected
+   - Generates only the selected translations using markdown-translator
    - Commits and pushes to PR branch
    - Adds `translations_added` label
-5. **Update Translation Status** workflow runs:
+6. **Update Translation Status** workflow runs:
    - Re-checks completeness
-   - Updates comment to show completion
-   - Removes `needs_translation` label
+   - Updates comment to show completion or remaining translations
+   - Removes `needs_translation` label if all translations complete
    - Removes `translations_added` label
 
 ### Typical Flow for Fork PRs
 
-Same as above, except step 4:
-- Workflow generates translations but cannot push to fork
+Same as above, except steps 5-6:
+- Workflow generates selected translations but cannot push to fork
 - Creates a `.patch` file uploaded as artifact
 - Comments on PR with instructions for contributor to download and apply patch
 - Contributor applies patch and pushes to their fork

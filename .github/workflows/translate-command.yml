@@ -85,88 +85,78 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
-      - name: Get files needing translation
+      - name: Get checked translations from comment
         if: steps.check-permission.outputs.is_maintainer == 'true'
         id: get-files
         run: |
-          # Get the base and head commits
-          BASE_SHA="${{ steps.pr-details.outputs.base_sha }}"
-          HEAD_SHA="${{ steps.pr-details.outputs.head_sha }}"
+          # Fetch all comments on the PR
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "/repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments" \
+            > pr_comments.json
           
-          # Get list of changed files in docs directories
-          git diff --name-only "$BASE_SHA" "$HEAD_SHA" | grep -E '^docs/(en|zh|ja)/' > changed_files.txt || true
-          
-          if [ ! -s changed_files.txt ]; then
-            echo "No documentation files to translate"
-            echo "has_files=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          
-          # Find missing translations
+          # Find the translation check comment (by github-actions[bot] containing "Missing translations")
           python3 << 'PYTHON_SCRIPT'
-          import os
-          from collections import defaultdict
+          import json
+          import re
           
-          # Read changed files
-          with open('changed_files.txt', 'r') as f:
-              changed_files = [line.strip() for line in f if line.strip()]
+          # Read comments
+          with open('pr_comments.json', 'r') as f:
+              comments = json.load(f)
           
-          # Group by relative path
-          files_by_path = defaultdict(set)
+          # Find the translation check comment
+          translation_comment = None
+          for comment in comments:
+              if (comment['user']['login'] == 'github-actions[bot]' and 
+                  'Missing translations detected' in comment['body']):
+                  translation_comment = comment['body']
+                  break
           
-          for file in changed_files:
-              parts = file.split('/', 2)
-              if len(parts) == 3 and parts[0] == 'docs' and parts[1] in ['en', 'zh', 'ja']:
-                  lang = parts[1]
-                  rel_path = parts[2]
-                  files_by_path[rel_path].add(lang)
+          if not translation_comment:
+              print("No translation check comment found")
+              exit(0)
           
-          # Find missing translations with proper source language selection
-          # Rules:
-          # - English and Chinese are the only source languages permitted
-          # - English can translate to Japanese or Chinese
-          # - Chinese can only translate to English
-          # - Japanese files are never source files
-          missing = []
+          # Parse checked boxes from the comment
+          # Checkbox format: - [ ] or - [x] followed by file description
+          # Example: - [x] **EN → ZH**: `loading/Etl_in_loading.md` *(auto-generated)*
+          checked_translations = []
           
-          for rel_path, langs in files_by_path.items():
-              for target_lang in ['en', 'zh', 'ja']:
-                  if target_lang not in langs:
-                      # Determine the appropriate source language
-                      source_lang = None
+          for line in translation_comment.split('\n'):
+              # Look for checked boxes: - [x] or - [X]
+              if re.match(r'^\s*-\s*\[[xX]\]', line):
+                  # Extract the source language, target language, and file path
+                  # Pattern: **SOURCE → TARGET**: `file/path.md`
+                  match = re.search(r'\*\*(EN|ZH|JA)\s*→\s*(EN|ZH|JA)\*\*:\s*`([^`]+)`', line)
+                  if match:
+                      source_lang = match.group(1).lower()
+                      target_lang = match.group(2).lower()
+                      rel_path = match.group(3)
                       
-                      if target_lang == 'en':
-                          # For English target: use Chinese as source
-                          if 'zh' in langs:
-                              source_lang = 'zh'
-                      elif target_lang == 'zh':
-                          # For Chinese target: use English as source
-                          if 'en' in langs:
-                              source_lang = 'en'
-                      elif target_lang == 'ja':
-                          # For Japanese target: use English as source
-                          if 'en' in langs:
-                              source_lang = 'en'
-                      
-                      # Add to missing list if we found a valid source
-                      if source_lang:
-                          missing.append(f"{source_lang}:{target_lang}:docs/{source_lang}/{rel_path}")
+                      # Build the translation entry
+                      source_file = f"docs/{source_lang}/{rel_path}"
+                      checked_translations.append(f"{source_lang}:{target_lang}:{source_file}")
+                      print(f"Found checked: {source_lang} → {target_lang}: {rel_path}")
           
-          # Write missing translations to file
-          if missing:
+          # Write checked translations to file
+          if checked_translations:
               with open('missing_translations.txt', 'w') as f:
-                  f.write('\n'.join(missing))
-              print(f"Found {len(missing)} translations needed")
+                  f.write('\n'.join(checked_translations))
+              print(f"\nTotal checked translations: {len(checked_translations)}")
           else:
-              print("No missing translations found")
+              print("No checked translations found")
           PYTHON_SCRIPT
           
-          if [ -f missing_translations.txt ]; then
+          if [ -f missing_translations.txt ] && [ -s missing_translations.txt ]; then
             echo "has_files=true" >> $GITHUB_OUTPUT
+            echo "Files to translate:"
             cat missing_translations.txt
           else
             echo "has_files=false" >> $GITHUB_OUTPUT
+            echo "No translations selected. Please check the boxes in the translation comment for the files you want to translate."
           fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Checkout markdown-translator
         if: steps.check-permission.outputs.is_maintainer == 'true' && steps.get-files.outputs.has_files == 'true'
@@ -321,6 +311,16 @@ jobs:
             git commit -m 'chore: apply automated translations'
             git push
             \`\`\`"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Comment when no files selected
+        if: |
+          steps.check-permission.outputs.is_maintainer == 'true' && 
+          steps.get-files.outputs.has_files == 'false'
+        run: |
+          gh pr comment ${{ github.event.issue.number }} --body \
+            "⚠️ No translations selected. Please check the boxes in the translation comment for the files you want to translate, then run \`/translate\` again."
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
