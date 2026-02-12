@@ -45,101 +45,9 @@ jobs:
         if: steps.changed-files.outputs.has_changes == 'true'
         id: check-completeness
         run: |
-          # Read changed files
-          mapfile -t changed_files < changed_files.txt
-          
-          # Arrays to track missing translations
-          declare -A files_by_path
-          declare -A langs_present
-          
-          # Process each changed file
-          for file in "${changed_files[@]}"; do
-            # Extract language and relative path
-            if [[ $file =~ ^docs/(en|zh|ja)/(.+)$ ]]; then
-              lang="${BASH_REMATCH[1]}"
-              rel_path="${BASH_REMATCH[2]}"
-              
-              # Track this file's relative path
-              if [ -z "${files_by_path[$rel_path]}" ]; then
-                files_by_path[$rel_path]="$lang"
-              else
-                files_by_path[$rel_path]="${files_by_path[$rel_path]},$lang"
-              fi
-            fi
-          done
-          
-          # Check which files are missing translations
-          missing_translations=""
-          manual_only_translations=""
-          
-          for rel_path in "${!files_by_path[@]}"; do
-            langs="${files_by_path[$rel_path]}"
-            
-            # Check which languages are present
-            has_en=false
-            has_zh=false
-            has_ja=false
-            
-            IFS=',' read -ra lang_array <<< "$langs"
-            for lang in "${lang_array[@]}"; do
-              case $lang in
-                en) has_en=true ;;
-                zh) has_zh=true ;;
-                ja) has_ja=true ;;
-              esac
-            done
-            
-            # Build list of missing translations
-            # Categorize based on whether auto-translation is possible
-            auto_missing=""
-            manual_missing=""
-            
-            if [ "$has_en" = true ] || [ "$has_zh" = true ] || [ "$has_ja" = true ]; then
-              # Check English - needs Chinese as source
-              if [ "$has_en" = false ]; then
-                if [ "$has_zh" = true ]; then
-                  auto_missing="${auto_missing}- [ ] \`docs/en/$rel_path\`%0A"
-                else
-                  manual_missing="${manual_missing}- [ ] \`docs/en/$rel_path\`%0A"
-                fi
-              fi
-              
-              # Check Chinese - needs English as source
-              if [ "$has_zh" = false ]; then
-                if [ "$has_en" = true ]; then
-                  auto_missing="${auto_missing}- [ ] \`docs/zh/$rel_path\`%0A"
-                else
-                  manual_missing="${manual_missing}- [ ] \`docs/zh/$rel_path\`%0A"
-                fi
-              fi
-              
-              # Check Japanese - needs English as source
-              if [ "$has_ja" = false ]; then
-                if [ "$has_en" = true ]; then
-                  auto_missing="${auto_missing}- [ ] \`docs/ja/$rel_path\`%0A"
-                else
-                  manual_missing="${manual_missing}- [ ] \`docs/ja/$rel_path\`%0A"
-                fi
-              fi
-            fi
-            
-            if [ -n "$auto_missing" ]; then
-              missing_translations="${missing_translations}%0A**File: \`$rel_path\`**%0A${auto_missing}"
-            fi
-            
-            if [ -n "$manual_missing" ]; then
-              manual_only_translations="${manual_only_translations}%0A**File: \`$rel_path\`**%0A${manual_missing}"
-            fi
-          done
-          
-          if [ -n "$missing_translations" ] || [ -n "$manual_only_translations" ]; then
-            echo "has_missing=true" >> $GITHUB_OUTPUT
-            # Save to files for the next step
-            echo "$missing_translations" > missing_translations.txt
-            echo "$manual_only_translations" > manual_translations.txt
-          else
-            echo "has_missing=false" >> $GITHUB_OUTPUT
-          fi
+          python3 docs/translation/check-and-format-translations.py changed_files.txt
+          has_missing=$(cat has_missing)
+          echo "has_missing=$has_missing" >> $GITHUB_OUTPUT
 
       - name: Find existing translation comment
         id: find-comment
@@ -149,65 +57,18 @@ jobs:
           comment-author: 'github-actions[bot]'
           body-includes: '<!-- translation-check-comment -->'
 
-      - name: Update comment - translations complete
-        if: steps.check-completeness.outputs.has_missing == 'false' && steps.find-comment.outputs.comment-id != ''
-        uses: peter-evans/create-or-update-comment@v4
-        with:
-          comment-id: ${{ steps.find-comment.outputs.comment-id }}
-          edit-mode: replace
-          body: |
-            <!-- translation-check-comment -->
-            ## ✅ Translation Check Complete
-            
-            All translations for the changed documentation files are present in this PR!
-
-      - name: Update comment - still missing translations
-        if: steps.check-completeness.outputs.has_missing == 'true' && steps.find-comment.outputs.comment-id != ''
+      - name: Update comment
+        if: steps.find-comment.outputs.comment-id != ''
         run: |
-          # Read missing translations
-          MISSING_CONTENT=$(cat missing_translations.txt 2>/dev/null || echo "")
-          MANUAL_CONTENT=$(cat manual_translations.txt 2>/dev/null || echo "")
-          
-          # Create comment body
-          cat > comment_body.md << 'EOF'
+          if [ "${{ steps.check-completeness.outputs.has_missing }}" == "false" ]; then
+            # All translations complete
+            cat > comment_body.md << 'EOF'
           <!-- translation-check-comment -->
-          ## 🌍 Translation Check
+          ## ✅ Translation Check Complete
           
-          This PR contains documentation changes that are still missing some translations.
-          
+          All translations for the changed documentation files are present in this PR!
           EOF
-          
-          # Add auto-translatable section if there are any
-          if [ -n "$MISSING_CONTENT" ]; then
-            cat >> comment_body.md << 'EOF'
-          ### Missing Translations (Can be auto-generated)
-          
-          Please check the boxes below for the translations you would like to request. A docs maintainer can trigger automatic translation by commenting `/translate` on this PR.
-          
-          EOF
-            echo "$MISSING_CONTENT" | sed 's/%0A/\n/g' >> comment_body.md
           fi
-          
-          # Add manual-only section if there are any
-          if [ -n "$MANUAL_CONTENT" ]; then
-            cat >> comment_body.md << 'EOF'
-          
-          ### Missing Translations (Require manual translation)
-          
-          ⚠️ **Note:** These translations cannot be auto-generated because no valid source file exists in this PR. They require manual translation.
-          
-          - **English** translations require a Chinese source file
-          - **Chinese** and **Japanese** translations require an English source file
-          
-          EOF
-            echo "$MANUAL_CONTENT" | sed 's/%0A/\n/g' >> comment_body.md
-          fi
-          
-          cat >> comment_body.md << 'EOF'
-          
-          ---
-          *If you've already added these translations manually, please disregard this message. The check will update automatically.*
-          EOF
           
           # Update comment
           gh api \
@@ -215,7 +76,7 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             /repos/${{ github.repository }}/issues/comments/${{ steps.find-comment.outputs.comment-id }} \
-            -f body="$(cat comment_body.md)"
+            -F 'body=@comment_body.md'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
