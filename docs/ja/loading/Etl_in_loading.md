@@ -5,7 +5,6 @@ displayed_sidebar: docs
 # ロード時のデータ変換
 
 import InsertPrivNote from '../_assets/commonMarkdown/insertPrivNote.mdx'
-
 StarRocks は ロード時のデータ変換 をサポートしています。
 
 この機能は、[Stream Load](../sql-reference/sql-statements/loading_unloading/STREAM_LOAD.md)、[Broker Load](../sql-reference/sql-statements/loading_unloading/BROKER_LOAD.md)、および [Routine Load](../sql-reference/sql-statements/loading_unloading/routine_load/CREATE_ROUTINE_LOAD.md) をサポートしていますが、[Spark Load](../sql-reference/sql-statements/loading_unloading/SPARK_LOAD.md) はサポートしていません。
