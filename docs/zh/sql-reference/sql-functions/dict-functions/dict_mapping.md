@@ -47,7 +47,7 @@ key_column_expr ::= <column_name> | <expr>
 1. 创建一个字典表并加载模拟数据。
 
       ```SQL
-      MySQL [test]> CREATE TABLE dict (
+      CREATE TABLE dict (
           order_uuid STRING,
           order_id_int BIGINT AUTO_INCREMENT 
       )
@@ -55,11 +55,11 @@ key_column_expr ::= <column_name> | <expr>
       DISTRIBUTED BY HASH (order_uuid);
       Query OK, 0 rows affected (0.02 sec)
       
-      MySQL [test]> INSERT INTO dict (order_uuid) VALUES ('a1'), ('a2'), ('a3');
+      INSERT INTO dict (order_uuid) VALUES ('a1'), ('a2'), ('a3');
       Query OK, 3 rows affected (0.12 sec)
       {'label':'insert_9e60b0e4-89fa-11ee-a41f-b22a2c00f66b', 'status':'VISIBLE', 'txnId':'15029'}
       
-      MySQL [test]> SELECT * FROM dict;
+      SELECT * FROM dict;
       +------------+--------------+
       | order_uuid | order_id_int |
       +------------+--------------+
@@ -77,7 +77,7 @@ key_column_expr ::= <column_name> | <expr>
 2. 查询字典表中与键 `a1` 映射的值。
 
     ```SQL
-    MySQL [test]> SELECT dict_mapping('dict', 'a1');
+    SELECT dict_mapping('dict', 'a1');
     +----------------------------+
     | dict_mapping('dict', 'a1') |
     +----------------------------+
@@ -108,11 +108,11 @@ key_column_expr ::= <column_name> | <expr>
 2. 当将模拟数据加载到此表中时，其中 `order_id_int` 列配置为 `dict_mapping('dict', 'order_uuid')`，StarRocks 会根据 `dict` 表中键和值之间的映射关系自动将值加载到 `order_id_int` 列中。
 
       ```SQL
-      MySQL [test]> INSERT INTO dest_table1(id, order_uuid, batch) VALUES (1, 'a1', 1), (2, 'a1', 1), (3, 'a3', 1), (4, 'a3', 1);
+      INSERT INTO dest_table1(id, order_uuid, batch) VALUES (1, 'a1', 1), (2, 'a1', 1), (3, 'a3', 1), (4, 'a3', 1);
       Query OK, 4 rows affected (0.05 sec) 
       {'label':'insert_e191b9e4-8a98-11ee-b29c-00163e03897d', 'status':'VISIBLE', 'txnId':'72'}
       
-      MySQL [test]> SELECT * FROM dest_table1;
+      SELECT * FROM dest_table1;
       +------+------------+-------+--------------+
       | id   | order_uuid | batch | order_id_int |
       +------+------------+-------+--------------+
@@ -148,11 +148,11 @@ key_column_expr ::= <column_name> | <expr>
 2. 当模拟数据加载到此表中时，您可以通过配置 `dict_mapping` 从字典表中获取映射的值。
 
     ```SQL
-    MySQL [test]> INSERT INTO dest_table2 VALUES (1, 'a1', dict_mapping('dict', 'a1'), 1);
+    INSERT INTO dest_table2 VALUES (1, 'a1', dict_mapping('dict', 'a1'), 1);
     Query OK, 1 row affected (0.35 sec)
     {'label':'insert_19872ab6-8a96-11ee-b29c-00163e03897d', 'status':'VISIBLE', 'txnId':'42'}
 
-    MySQL [test]> SELECT * FROM dest_table2;
+    SELECT * FROM dest_table2;
     +------+------------+--------------+-------+
     | id   | order_uuid | order_id_int | batch |
     +------+------------+--------------+-------+
@@ -166,7 +166,7 @@ key_column_expr ::= <column_name> | <expr>
 当 `<null_if_not_exist>` 模式被禁用，并且查询了字典表中不存在的键所映射的值时，将返回一个错误，而不是 `NULL`。它确保数据行的键首先被加载到字典表中，并且在将该数据行加载到目标表之前，会生成其映射的值（字典 ID）。
 
 ```SQL
-MySQL [test]>  SELECT dict_mapping('dict', 'b1', true);
+SELECT dict_mapping('dict', 'b1', true);
 ERROR 1064 (HY000): Query failed if record not exist in dict table.
 ```
 
@@ -175,7 +175,7 @@ ERROR 1064 (HY000): Query failed if record not exist in dict table.
 1. 创建一个具有组合主键的字典表，并将模拟数据加载到其中。
 
       ```SQL
-      MySQL [test]> CREATE TABLE dict2 (
+      CREATE TABLE dict2 (
           order_uuid STRING,
           order_date DATE, 
           order_id_int BIGINT AUTO_INCREMENT
@@ -185,12 +185,12 @@ ERROR 1064 (HY000): Query failed if record not exist in dict table.
       ;
       Query OK, 0 rows affected (0.02 sec)
       
-      MySQL [test]> INSERT INTO dict2 VALUES ('a1','2023-11-22',default), ('a2','2023-11-22',default), ('a3','2023-11-22',default);
+      INSERT INTO dict2 VALUES ('a1','2023-11-22',default), ('a2','2023-11-22',default), ('a3','2023-11-22',default);
       Query OK, 3 rows affected (0.12 sec)
       {'label':'insert_9e60b0e4-89fa-11ee-a41f-b22a2c00f66b', 'status':'VISIBLE', 'txnId':'15029'}
       
       
-      MySQL [test]> select * from dict2;
+      select * from dict2;
       +------------+------------+--------------+
       | order_uuid | order_date | order_id_int |
       +------------+------------+--------------+
@@ -210,6 +210,6 @@ ERROR 1064 (HY000): Query failed if record not exist in dict table.
    请注意，如果仅指定一个主键，则会发生错误。
 
       ```SQL
-      MySQL [test]> SELECT dict_mapping('dict2', 'a1');
+      SELECT dict_mapping('dict2', 'a1');
       ERROR 1064 (HY000): Getting analyzing error. Detail message: dict_mapping function param size should be 3 - 5.
       ```
