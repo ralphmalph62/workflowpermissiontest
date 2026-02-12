@@ -64,9 +64,11 @@ CSV データの場合、カンマ (,)、タブ、パイプ (|) など、長さ�
 
 2.  StarRocks データベース `test_db` にテーブルを作成します。
 
-    > **NOTE**
-    >
-    > v2.5.7 以降、StarRocks はテーブル作成時またはパーティション追加時にバケット数 (BUCKETS) を自動的に設定できます。手動でバケット数を設定する必要はありません。詳細については、「[バケット数の設定](../table_design/data_distribution/Data_distribution.md#set-the-number-of-buckets)」を参照してください。
+    :::note
+
+    v2.5.7 以降、StarRocks はテーブル作成時またはパーティション追加時にバケット数 (BUCKETS) を自動的に設定できます。手動でバケット数を設定する必要はありません。詳細については、「[バケット数の設定](../table_design/data_distribution/Data_distribution.md#set-the-number-of-buckets)」を参照してください。
+
+    :::
 
     a. `event_date`、`event_type`、および `user_id` の 3 つのカラムで構成される `table1` という名前のテーブルを作成します。
 
