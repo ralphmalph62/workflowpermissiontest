@@ -77,39 +77,48 @@ def format_comment_body(auto_missing, manual_missing):
         "<!-- translation-check-comment -->",
         "## 🌍 Translation Check",
         "",
-        "This PR contains documentation changes that are missing translations in some languages.",
-        "",
     ]
     
-    # Auto-translatable section
-    if auto_missing:
-        lines.extend([
-            "### Missing Translations (Can be auto-generated)",
-            "",
-            "Please check the boxes below for the translations you would like to request. A docs maintainer can trigger automatic translation by commenting `/translate` on this PR.",
-            "",
-        ])
-        for source_lang, target_lang, rel_path in auto_missing:
-            lines.append(f"- [ ] {source_lang} {target_lang} {rel_path}")
-        lines.append("")
+    # Check if there are any missing translations
+    has_missing = bool(auto_missing or manual_missing)
     
-    # Manual-only section
-    if manual_missing:
+    if has_missing:
         lines.extend([
-            "### Missing Translations (Require manual translation by a member of docs-maintainer)",
+            "This PR contains documentation changes that are missing translations in some languages.",
             "",
         ])
-        for rel_path in sorted(manual_missing.keys()):
-            for lang in sorted(manual_missing[rel_path]):
-                lines.append(f"- {lang}/{rel_path}")
-        lines.extend([
-            "",
-            "⚠️ **Note:** These translations cannot be auto-generated because the required source file does not exist in this PR. Please add the source file to enable automatic translation:",
-            "",
-            "- **English** (`en/...`) can be the source for translation to Chinese and Japanese.",
-            "- **Chinese** (`zh/...`) can be the source for translation to English.",
-            "- Japanese can never be a source file.",
-        ])
+        
+        # Auto-translatable section
+        if auto_missing:
+            lines.extend([
+                "### Missing Translations (Can be auto-generated)",
+                "",
+                "Please check the boxes below for the translations you would like to request. A docs maintainer can trigger automatic translation by commenting `/translate` on this PR.",
+                "",
+            ])
+            for source_lang, target_lang, rel_path in auto_missing:
+                lines.append(f"- [ ] {source_lang} {target_lang} {rel_path}")
+            lines.append("")
+        
+        # Manual-only section
+        if manual_missing:
+            lines.extend([
+                "### Missing Translations (Require manual translation by a member of docs-maintainer)",
+                "",
+            ])
+            for rel_path in sorted(manual_missing.keys()):
+                for lang in sorted(manual_missing[rel_path]):
+                    lines.append(f"- {lang}/{rel_path}")
+            lines.extend([
+                "",
+                "⚠️ **Note:** These translations cannot be auto-generated because the required source file does not exist in this PR. Please add the source file to enable automatic translation:",
+                "",
+                "- **English** (`en/...`) can be the source for translation to Chinese and Japanese.",
+                "- **Chinese** (`zh/...`) can be the source for translation to English.",
+                "- Japanese can never be a source file.",
+            ])
+    else:
+        lines.append("There are no missing translations. Yippee! 🎉")
     
     lines.extend([
         "",
@@ -144,12 +153,15 @@ def main():
     # Output results
     output_dir.joinpath("has_missing").write_text("true" if has_missing else "false")
     
+    # Always create comment body (whether missing or not)
+    comment_body = format_comment_body(auto_missing, manual_missing)
+    output_dir.joinpath("comment_body.md").write_text(comment_body)
+    
     if has_missing:
-        comment_body = format_comment_body(auto_missing, manual_missing)
-        output_dir.joinpath("comment_body.md").write_text(comment_body)
         print(f"Comment body written to {output_dir}/comment_body.md")
     else:
         print("No missing translations found")
+        print(f"Comment body written to {output_dir}/comment_body.md")
     
     print(f"has_missing={str(has_missing).lower()}")
 
