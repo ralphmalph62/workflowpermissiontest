@@ -107,11 +107,16 @@ jobs:
           
           # Find the translation check comment (get the most recent one in case there are multiple)
           translation_comment = None
-          for comment in reversed(comments):  # Iterate in reverse to get the most recent first
+          comment_index = -1
+          for i, comment in enumerate(reversed(comments)):  # Iterate in reverse to get the most recent first
               if (comment['user']['login'] == 'github-actions[bot]' and 
                   ('Missing translations' in comment['body'] or 'Translation Check' in comment['body'])):
                   translation_comment = comment['body']
+                  comment_index = i
                   break
+          
+          print(f"Processed {len(comments)} comments total")
+          print(f"Found translation check comment at index {comment_index} (reversed)")
           
           if not translation_comment:
               print("No translation check comment found")
