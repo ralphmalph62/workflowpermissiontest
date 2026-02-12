@@ -344,7 +344,7 @@ jobs:
         if: steps.check-permission.outputs.is_maintainer == 'true' && steps.push.outputs.pushed == 'true'
         run: |
           # Get the latest changes
-          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          BASE_SHA="${{ steps.pr-details.outputs.base_sha }}"
           HEAD_SHA=$(git rev-parse HEAD)
           
           # Get list of changed files in docs directories
@@ -369,7 +369,12 @@ jobs:
                 -H "X-GitHub-Api-Version: 2022-11-28" \
                 /repos/${{ github.repository }}/issues/comments/$comment_id \
                 -F 'body=@comment_body.md'
+              echo "Updated translation check comment (ID: $comment_id)"
+            else
+              echo "No translation check comment found to update"
             fi
+          else
+            echo "No docs files changed"
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
