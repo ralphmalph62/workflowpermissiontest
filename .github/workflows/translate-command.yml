@@ -39,7 +39,7 @@ jobs:
             echo "is_maintainer=true" >> $GITHUB_OUTPUT
           fi
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.DOC_MEMBERSHIP_PAT }}
 
       - name: Add reaction to comment
         if: steps.check-permission.outputs.is_maintainer == 'true'
