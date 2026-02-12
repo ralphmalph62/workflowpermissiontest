@@ -2,7 +2,7 @@
 displayed_sidebar: docs
 ---
 
-# dict_mapping
+# `dict_mapping`
 
 返回字典表中与指定键映射的值。
 
