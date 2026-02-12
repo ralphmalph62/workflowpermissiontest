@@ -4,8 +4,6 @@ import QSOverview from '../_assets/commonMarkdown/quickstart-overview-tip.mdx'
 
 # 架构
 
-
-
 StarRocks 具有强大的架构。整个系统仅由两种类型的组件组成："前端" 和 "后端"。前端节点被称为 **FE**。后端节点分为两种类型：**BE** 和 **CN**（计算节点）。当数据使用本地存储时，部署 BE；当数据存储在对象存储或 HDFS 上时，部署 CN。StarRocks 不依赖任何外部组件，从而简化了部署和维护。节点可以水平扩展而无需停机。此外，StarRocks 具有元数据和服务数据的副本机制，这提高了数据可靠性并有效防止了单点故障 (SPOFs)。
 
 StarRocks 兼容 MySQL 通信协议并支持标准 SQL。用户可以通过 MySQL 客户端连接到 StarRocks，以获取即时且有价值的洞察。
