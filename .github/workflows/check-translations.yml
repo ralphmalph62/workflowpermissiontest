@@ -100,7 +100,7 @@ jobs:
                 if [ "$has_zh" = true ]; then
                   auto_missing+="- [ ] zh en $rel_path"$'\n'
                 else
-                  manual_missing+="- [ ] zh en $rel_path"$'\n'
+                  manual_missing+="- zh en $rel_path"$'\n'
                 fi
               fi
             
@@ -109,7 +109,7 @@ jobs:
                 if [ "$has_en" = true ]; then
                   auto_missing+="- [ ] en zh $rel_path"$'\n'
                 else
-                  manual_missing+="- [ ] en zh $rel_path"$'\n'
+                  manual_missing+="- en zh $rel_path"$'\n'
                 fi
               fi
             
@@ -118,7 +118,7 @@ jobs:
                 if [ "$has_en" = true ]; then
                   auto_missing+="- [ ] en ja $rel_path"$'\n'
                 else
-                  manual_missing+="- [ ] en ja $rel_path"$'\n'
+                  manual_missing+="- en ja $rel_path"$'\n'
                 fi
               fi
             fi
@@ -185,8 +185,9 @@ jobs:
           
           ⚠️ **Note:** These translations cannot be auto-generated because no valid source file exists in this PR. They require manual translation.
           
-          - **English** translations require a Chinese source file
-          - **Chinese** and **Japanese** translations require an English source file
+          - No checkboxes are shown for manual-only items.
+          - **English** translations require a Chinese source file.
+          - **Chinese** and **Japanese** translations require an English source file.
           
           EOF
             cat manual_translations.txt >> comment_body.md
