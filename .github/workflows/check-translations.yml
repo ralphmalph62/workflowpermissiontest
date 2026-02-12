@@ -206,7 +206,7 @@ jobs:
               -H "Accept: application/vnd.github+json" \
               -H "X-GitHub-Api-Version: 2022-11-28" \
               /repos/${{ github.repository }}/issues/comments/${{ steps.find-comment.outputs.comment-id }} \
-              -F body=@comment_body.md
+              -F 'body=@comment_body.md'
           else
             # Create new comment
             gh pr comment ${{ github.event.pull_request.number }} --body-file comment_body.md
