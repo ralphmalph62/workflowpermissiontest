@@ -121,14 +121,36 @@ jobs:
                   rel_path = parts[2]
                   files_by_path[rel_path].add(lang)
           
-          # Find missing translations
+          # Find missing translations with proper source language selection
+          # Rules:
+          # - English and Chinese are the only source languages permitted
+          # - English can translate to Japanese or Chinese
+          # - Chinese can only translate to English
+          # - Japanese files are never source files
           missing = []
           
           for rel_path, langs in files_by_path.items():
               for target_lang in ['en', 'zh', 'ja']:
                   if target_lang not in langs:
-                      source_lang = list(langs)[0]  # Pick first available language as source
-                      missing.append(f"{source_lang}:{target_lang}:docs/{source_lang}/{rel_path}")
+                      # Determine the appropriate source language
+                      source_lang = None
+                      
+                      if target_lang == 'en':
+                          # For English target: use Chinese as source
+                          if 'zh' in langs:
+                              source_lang = 'zh'
+                      elif target_lang == 'zh':
+                          # For Chinese target: use English as source
+                          if 'en' in langs:
+                              source_lang = 'en'
+                      elif target_lang == 'ja':
+                          # For Japanese target: use English as source
+                          if 'en' in langs:
+                              source_lang = 'en'
+                      
+                      # Add to missing list if we found a valid source
+                      if source_lang:
+                          missing.append(f"{source_lang}:{target_lang}:docs/{source_lang}/{rel_path}")
           
           # Write missing translations to file
           if missing:

@@ -18,7 +18,10 @@ The workflows work together to:
 **What it does:**
 - Analyzes all changed documentation files
 - Identifies missing translations (e.g., if `docs/en/file.md` changed but not `docs/zh/file.md`)
-- Posts a comment with a checklist of missing translations
+- Categorizes missing translations into:
+  - **Auto-translatable**: Can be generated via `/translate` command (has valid source file)
+  - **Manual-only**: Requires manual translation (no valid source file in the PR)
+- Posts a comment with separate checklists for each category
 - Adds the `needs_translation` label if translations are missing
 - Removes the label and updates the comment if all translations are complete
 
@@ -91,6 +94,50 @@ Example:
 en:zh:docs/en/loading/StreamLoad.md
 en:ja:docs/en/loading/StreamLoad.md
 ```
+
+## Translation Source Language Rules
+
+The workflows enforce specific rules about which languages can be used as translation sources:
+
+### Permitted Source Languages
+- **English (`en`)**: Can be used to translate to Chinese (`zh`) or Japanese (`ja`)
+- **Chinese (`zh`)**: Can only be used to translate to English (`en`)
+- **Japanese (`ja`)**: Never used as a source language
+
+### Translation Logic
+
+When the `/translate` command is triggered, the workflow:
+
+1. **For Japanese translations**: Always uses English as the source
+   - `docs/en/file.md` → `docs/ja/file.md`
+
+2. **For Chinese translations**: Uses English as the source
+   - `docs/en/file.md` → `docs/zh/file.md`
+
+3. **For English translations**: Uses Chinese as the source
+   - `docs/zh/file.md` → `docs/en/file.md`
+
+### Why These Rules?
+
+- **Quality**: English and Chinese documentation are maintained as primary sources
+- **Consistency**: Japanese translations are always derived from English for consistency
+- **Bidirectional EN-ZH**: Supports both English-to-Chinese and Chinese-to-English workflows
+- **No cascading**: Prevents translation chains (e.g., EN → JA → ZH) that could degrade quality
+
+### Example Scenario
+
+If a PR contains changes to:
+- `docs/en/feature.md` (changed)
+- `docs/zh/feature.md` (missing)
+- `docs/ja/feature.md` (missing)
+
+The `/translate` command will:
+1. Translate `docs/en/feature.md` → `docs/zh/feature.md` (English to Chinese)
+2. Translate `docs/en/feature.md` → `docs/ja/feature.md` (English to Japanese)
+
+If later only `docs/zh/feature.md` is updated:
+- The workflow will only offer to translate `docs/zh/feature.md` → `docs/en/feature.md` (Chinese to English)
+- It will NOT attempt to create Japanese from Chinese
 
 ## Labels
 

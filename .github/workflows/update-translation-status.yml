@@ -68,6 +68,7 @@ jobs:
           
           # Check which files are missing translations
           missing_translations=""
+          manual_only_translations=""
           
           for rel_path in "${!files_by_path[@]}"; do
             langs="${files_by_path[$rel_path]}"
@@ -87,28 +88,53 @@ jobs:
             done
             
             # Build list of missing translations
-            missing=""
+            # Categorize based on whether auto-translation is possible
+            auto_missing=""
+            manual_missing=""
+            
             if [ "$has_en" = true ] || [ "$has_zh" = true ] || [ "$has_ja" = true ]; then
+              # Check English - needs Chinese as source
               if [ "$has_en" = false ]; then
-                missing="${missing}- [ ] \`docs/en/$rel_path\`%0A"
+                if [ "$has_zh" = true ]; then
+                  auto_missing="${auto_missing}- [ ] \`docs/en/$rel_path\`%0A"
+                else
+                  manual_missing="${manual_missing}- [ ] \`docs/en/$rel_path\`%0A"
+                fi
               fi
+              
+              # Check Chinese - needs English as source
               if [ "$has_zh" = false ]; then
-                missing="${missing}- [ ] \`docs/zh/$rel_path\`%0A"
+                if [ "$has_en" = true ]; then
+                  auto_missing="${auto_missing}- [ ] \`docs/zh/$rel_path\`%0A"
+                else
+                  manual_missing="${manual_missing}- [ ] \`docs/zh/$rel_path\`%0A"
+                fi
               fi
+              
+              # Check Japanese - needs English as source
               if [ "$has_ja" = false ]; then
-                missing="${missing}- [ ] \`docs/ja/$rel_path\`%0A"
+                if [ "$has_en" = true ]; then
+                  auto_missing="${auto_missing}- [ ] \`docs/ja/$rel_path\`%0A"
+                else
+                  manual_missing="${manual_missing}- [ ] \`docs/ja/$rel_path\`%0A"
+                fi
               fi
             fi
             
-            if [ -n "$missing" ]; then
-              missing_translations="${missing_translations}%0A**File: \`$rel_path\`**%0A${missing}"
+            if [ -n "$auto_missing" ]; then
+              missing_translations="${missing_translations}%0A**File: \`$rel_path\`**%0A${auto_missing}"
+            fi
+            
+            if [ -n "$manual_missing" ]; then
+              manual_only_translations="${manual_only_translations}%0A**File: \`$rel_path\`**%0A${manual_missing}"
             fi
           done
           
-          if [ -n "$missing_translations" ]; then
+          if [ -n "$missing_translations" ] || [ -n "$manual_only_translations" ]; then
             echo "has_missing=true" >> $GITHUB_OUTPUT
-            # Save to file for the next step
+            # Save to files for the next step
             echo "$missing_translations" > missing_translations.txt
+            echo "$manual_only_translations" > manual_translations.txt
           else
             echo "has_missing=false" >> $GITHUB_OUTPUT
           fi
@@ -137,7 +163,8 @@ jobs:
         if: steps.check-completeness.outputs.has_missing == 'true' && steps.find-comment.outputs.comment-id != ''
         run: |
           # Read missing translations
-          MISSING_CONTENT=$(cat missing_translations.txt)
+          MISSING_CONTENT=$(cat missing_translations.txt 2>/dev/null || echo "")
+          MANUAL_CONTENT=$(cat manual_translations.txt 2>/dev/null || echo "")
           
           # Create comment body
           cat > comment_body.md << 'EOF'
@@ -146,14 +173,33 @@ jobs:
           
           This PR contains documentation changes that are still missing some translations.
           
-          ### Missing Translations
+          EOF
+          
+          # Add auto-translatable section if there are any
+          if [ -n "$MISSING_CONTENT" ]; then
+            cat >> comment_body.md << 'EOF'
+          ### Missing Translations (Can be auto-generated)
           
           Please check the boxes below for the translations you would like to request. A docs maintainer can trigger automatic translation by commenting `/translate` on this PR.
           
           EOF
+            echo "$MISSING_CONTENT" | sed 's/%0A/\n/g' >> comment_body.md
+          fi
           
-          # Append missing translations (decode %0A to actual newlines)
-          echo "$MISSING_CONTENT" | sed 's/%0A/\n/g' >> comment_body.md
+          # Add manual-only section if there are any
+          if [ -n "$MANUAL_CONTENT" ]; then
+            cat >> comment_body.md << 'EOF'
+          
+          ### Missing Translations (Require manual translation)
+          
+          ⚠️ **Note:** These translations cannot be auto-generated because no valid source file exists in this PR. They require manual translation.
+          
+          - **English** translations require a Chinese source file
+          - **Chinese** and **Japanese** translations require an English source file
+          
+          EOF
+            echo "$MANUAL_CONTENT" | sed 's/%0A/\n/g' >> comment_body.md
+          fi
           
           cat >> comment_body.md << 'EOF'
           

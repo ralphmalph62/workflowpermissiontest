@@ -50,6 +50,7 @@ done
 
 # Check which files are missing translations
 missing_translations=""
+manual_only_translations=""
 
 for rel_path in "${!files_by_path[@]}"; do
   langs="${files_by_path[$rel_path]}"
@@ -69,29 +70,54 @@ for rel_path in "${!files_by_path[@]}"; do
   done
   
   # Build list of missing translations
-  missing=""
+  # Categorize based on whether auto-translation is possible
+  auto_missing=""
+  manual_missing=""
+  
   if [ "$has_en" = true ] || [ "$has_zh" = true ] || [ "$has_ja" = true ]; then
+    # Check English - needs Chinese as source
     if [ "$has_en" = false ]; then
-      missing="${missing}- [ ] \`docs/en/$rel_path\`%0A"
+      if [ "$has_zh" = true ]; then
+        auto_missing="${auto_missing}- [ ] \`docs/en/$rel_path\`%0A"
+      else
+        manual_missing="${manual_missing}- [ ] \`docs/en/$rel_path\`%0A"
+      fi
     fi
+    
+    # Check Chinese - needs English as source
     if [ "$has_zh" = false ]; then
-      missing="${missing}- [ ] \`docs/zh/$rel_path\`%0A"
+      if [ "$has_en" = true ]; then
+        auto_missing="${auto_missing}- [ ] \`docs/zh/$rel_path\`%0A"
+      else
+        manual_missing="${manual_missing}- [ ] \`docs/zh/$rel_path\`%0A"
+      fi
     fi
+    
+    # Check Japanese - needs English as source
     if [ "$has_ja" = false ]; then
-      missing="${missing}- [ ] \`docs/ja/$rel_path\`%0A"
+      if [ "$has_en" = true ]; then
+        auto_missing="${auto_missing}- [ ] \`docs/ja/$rel_path\`%0A"
+      else
+        manual_missing="${manual_missing}- [ ] \`docs/ja/$rel_path\`%0A"
+      fi
     fi
   fi
   
-  if [ -n "$missing" ]; then
-    missing_translations="${missing_translations}%0A**File: \`$rel_path\`**%0A${missing}"
+  if [ -n "$auto_missing" ]; then
+    missing_translations="${missing_translations}%0A**File: \`$rel_path\`**%0A${auto_missing}"
+  fi
+  
+  if [ -n "$manual_missing" ]; then
+    manual_only_translations="${manual_only_translations}%0A**File: \`$rel_path\`**%0A${manual_missing}"
   fi
 done
 
-if [ -n "$missing_translations" ]; then
+if [ -n "$missing_translations" ] || [ -n "$manual_only_translations" ]; then
   echo "HAS_MISSING=true" >> "$GITHUB_OUTPUT"
-  # Save to file for use in GitHub Actions
+  # Save to files for use in GitHub Actions
   echo "$missing_translations" > missing_translations.txt
-  echo "Missing translations saved to missing_translations.txt"
+  echo "$manual_only_translations" > manual_translations.txt
+  echo "Missing translations categorized and saved"
 else
   echo "HAS_MISSING=false" >> "$GITHUB_OUTPUT"
   echo "All translations are complete!"
