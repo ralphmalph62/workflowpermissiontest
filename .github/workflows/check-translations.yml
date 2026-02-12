@@ -98,37 +98,31 @@ jobs:
               # Check English - needs Chinese as source
               if [ "$has_en" = false ]; then
                 if [ "$has_zh" = true ]; then
-                  auto_missing+="- [ ] **ZH → EN**: \`$rel_path\` *(auto-generated)*"$'\n'
-                else
-                  manual_missing+="- [ ] **English**: \`$rel_path\` (requires Chinese source)"$'\n'
+                  auto_missing+="- [ ] zh en $rel_path"$'\n'
                 fi
               fi
               
               # Check Chinese - needs English as source
               if [ "$has_zh" = false ]; then
                 if [ "$has_en" = true ]; then
-                  auto_missing+="- [ ] **EN → ZH**: \`$rel_path\` *(auto-generated)*"$'\n'
-                else
-                  manual_missing+="- [ ] **Chinese**: \`$rel_path\` (requires English source)"$'\n'
+                  auto_missing+="- [ ] en zh $rel_path"$'\n'
                 fi
               fi
               
               # Check Japanese - needs English as source
               if [ "$has_ja" = false ]; then
                 if [ "$has_en" = true ]; then
-                  auto_missing+="- [ ] **EN → JA**: \`$rel_path\` *(auto-generated)*"$'\n'
-                else
-                  manual_missing+="- [ ] **Japanese**: \`$rel_path\` (requires English source)"$'\n'
+                  auto_missing+="- [ ] en ja $rel_path"$'\n'
                 fi
               fi
             fi
             
             if [ -n "$auto_missing" ]; then
-              missing_translations+=$'**File: `'"$rel_path"$'`**\n'"$auto_missing"
+              missing_translations+="$auto_missing"
             fi
             
             if [ -n "$manual_missing" ]; then
-              manual_only_translations+=$'**File: `'"$rel_path"$'`**\n'"$manual_missing"
+              manual_only_translations+="$manual_missing"
             fi
           done
           

@@ -131,8 +131,8 @@ jobs:
           print(f"Found translation check comment (length: {len(translation_comment)} chars)")
           
           # Parse checked boxes from the comment
-          # Checkbox format: - [ ] or - [x] followed by file description
-          # Example: - [x] **EN → ZH**: `loading/Etl_in_loading.md` *(auto-generated)*
+          # Simplified format: - [x] source target filepath
+          # Example: - [x] zh en introduction/Architecture.md
           checked_translations = []
           checkbox_count = 0
           
@@ -140,22 +140,9 @@ jobs:
               # Look for checked boxes: - [x] or - [X]
               if re.match(r'^\s*-\s*\[[xX]\]', line):
                   checkbox_count += 1
-                  # Extract the source language, target language, and file path
-                  # Handle multiple regex patterns to account for potential markdown rendering variations:
-                  #  - **EN → ZH**: `file/path.md` (ideal)
-                  #  - **EN →** **ZH**: `file/path.md` (arrow causes bold break)
-                  #  - EN → ZH: `file/path.md` (no bold)
-                  
-                  # Try pattern 1: **LANG → LANG**: `path`
-                  match = re.search(r'\*\*(EN|ZH|JA)\s*→\s*(EN|ZH|JA)\*\*:\s*`([^`]+)`', line)
-                  
-                  # Try pattern 2: **LANG →** **LANG**: `path` (arrow causes bold break)
-                  if not match:
-                      match = re.search(r'\*\*(EN|ZH|JA)\s*→\*\*\s*\*\*(EN|ZH|JA)\*\*:\s*`([^`]+)`', line)
-                  
-                  # Try pattern 3: LANG → LANG: `path` (no bold markers)
-                  if not match:
-                      match = re.search(r'(EN|ZH|JA)\s*→\s*(EN|ZH|JA):\s*`([^`]+)`', line)
+                  # Extract source, target, and path from simple format
+                  # Format: - [x] LANG LANG filepath
+                  match = re.search(r'^\s*-\s*\[[xX]\]\s+(\w+)\s+(\w+)\s+(\S+)', line)
                   
                   if match:
                       source_lang = match.group(1).lower()
@@ -167,7 +154,7 @@ jobs:
                       checked_translations.append(f"{source_lang}:{target_lang}:{source_file}")
                       print(f"Found checked: {source_lang} → {target_lang}: {rel_path}")
                   else:
-                      print(f"Warning: Checkbox found but regex didn't match: {line[:80]}")
+                      print(f"Warning: Checkbox found but could not parse: {line[:80]}")
           
           print(f"\nTotal checkboxes found: {checkbox_count}")
           print(f"Total translations to generate: {len(checked_translations)}")
