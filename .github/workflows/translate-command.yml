@@ -154,21 +154,23 @@ jobs:
           ref: 'main'
           path: 'markdown-translator'
 
-      - name: Setup Python
+      - name: Setup Node.js
         if: steps.check-permission.outputs.is_maintainer == 'true' && steps.get-files.outputs.has_files == 'true'
-        uses: actions/setup-python@v5
+        uses: actions/setup-node@v4
         with:
-          python-version: '3.11'
+          node-version: '24'
 
       - name: Install translation dependencies
         if: steps.check-permission.outputs.is_maintainer == 'true' && steps.get-files.outputs.has_files == 'true'
         run: |
           cd markdown-translator
-          pip install -r requirements.txt
+          npm install
 
       - name: Generate translations
         if: steps.check-permission.outputs.is_maintainer == 'true' && steps.get-files.outputs.has_files == 'true'
         id: translate
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           cd "$GITHUB_WORKSPACE"
           
@@ -187,14 +189,13 @@ jobs:
             
             echo "Translating $source_file ($source_lang) -> $target_file ($target_lang)"
             
-            # Run translation script
-            # Note: Adjust this command based on actual markdown-translator usage
+            # Run translation using markdown-translator CLI
+            # The tool translates from English to other languages
             cd markdown-translator
-            if python translate.py \
-              --source "../$source_file" \
-              --target "../$target_file" \
-              --source-lang "$source_lang" \
-              --target-lang "$target_lang"; then
+            if node bin/cli.js translate \
+              -i "../$source_file" \
+              -l "$target_lang" \
+              -o "../$target_file"; then
               translation_count=$((translation_count + 1))
               echo "✓ Successfully translated to $target_file"
             else

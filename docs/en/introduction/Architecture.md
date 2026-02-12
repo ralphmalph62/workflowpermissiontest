@@ -11,7 +11,7 @@ StarRocks is compatible with MySQL protocols and supports standard SQL. Users ca
 
 ## Architecture choices
 
-StarRocks supports shared-nothing (Each BE has a portion of the data on its local storage) and shared-data (all data on object storage or HDFS and each CN has only cache on local storage). You can decide where the data is stored based on your needs. 
+StarRocks supports shared-nothing (Each BE has a portion of the data on its local storage) and shared-data (all data on object storage or HDFS and each CN has only cache on local storage). You decide where the data is stored based on your needs. 
 
 ![Architecture choices](../_assets/architecture_choices.png)
 

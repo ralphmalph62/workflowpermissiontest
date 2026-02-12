@@ -148,6 +148,10 @@ Same as above, except step 4:
   - Required for verifying if users are members of the `docs-maintainer` team
   - Create at: GitHub Settings → Developer settings → Personal access tokens → Tokens (classic)
   - Add to repository: Settings → Secrets and variables → Actions → New repository secret
+- `GEMINI_API_KEY`: Google Gemini API key for translation
+  - Required by the markdown-translator tool to perform translations
+  - Get your API key at: [Google AI Studio](https://aistudio.google.com/app/apikey)
+  - Add to repository: Settings → Secrets and variables → Actions → New repository secret
 
 ### Required Permissions
 
@@ -159,12 +163,13 @@ The workflows use these permissions:
 
 To adjust which languages are checked, modify the language arrays in:
 - [check-translations.yml](check-translations.yml) (lines checking for `en`, `zh`, `ja`)
-- [translate-command.yml](translate-command.yml) (Python script language list)
+- [translate-command.yml](translate-command.yml) (language checking logic in shell script)
 - [update-translation-status.yml](update-translation-status.yml) (language checking logic)
 
 To change the translation tool:
 - Update the repository URL in `translate-command.yml`
-- Modify the translation command to match your tool's interface
+- Modify the translation command (currently uses `node bin/cli.js translate -i <input> -l <language> -o <output>`)
+- Update the `GEMINI_API_KEY` secret name if using a different AI service
 
 ## Troubleshooting
 
@@ -187,17 +192,25 @@ To change the translation tool:
 - Check that workflows have `pull-requests: write` permission
 - Verify labels exist in the repository (GitHub will create them automatically on first use)
 
+### Translation failures
+- Verify `GEMINI_API_KEY` secret is set correctly
+- Check Google Gemini API quota and rate limits
+- Ensure the API key has necessary permissions
+- Review workflow logs for specific error messages from the translation tool
+
 ## Dependencies
 
 ### GitHub Actions
 - `actions/checkout@v4`
-- `actions/setup-python@v5`
+- `actions/setup-node@v4`
 - `actions/upload-artifact@v4`
 - `peter-evans/find-comment@v3`
-- `peter-evans/create-or-update-comment@v4`
 
 ### External Repository
-- [StarRocks/markdown-translator](https://github.com/StarRocks/markdown-translator) - Translation tool
+- [StarRocks/markdown-translator](https://github.com/StarRocks/markdown-translator) - Node.js-based translation tool powered by Google Gemini AI
+  - Requires Node.js 16.0.0 or higher
+  - Uses Google Gemini API for AI-powered translations
+  - Preserves markdown formatting and structure
 
 ## Contributing
 
