@@ -135,24 +135,41 @@ jobs:
 
       - name: Update comment - still missing translations
         if: steps.check-completeness.outputs.has_missing == 'true' && steps.find-comment.outputs.comment-id != ''
-        uses: peter-evans/create-or-update-comment@v4
-        with:
-          comment-id: ${{ steps.find-comment.outputs.comment-id }}
-          edit-mode: replace
-          body: |
-            <!-- translation-check-comment -->
-            ## 🌍 Translation Check
-            
-            This PR contains documentation changes that are still missing some translations.
-            
-            ### Missing Translations
-            
-            Please check the boxes below for the translations you would like to request. A docs maintainer can trigger automatic translation by commenting `/translate` on this PR.
-            
-            $(cat missing_translations.txt)
-            
-            ---
-            *If you've already added these translations manually, please disregard this message. The check will update automatically.*
+        run: |
+          # Read missing translations
+          MISSING_CONTENT=$(cat missing_translations.txt)
+          
+          # Create comment body
+          cat > comment_body.md << 'EOF'
+          <!-- translation-check-comment -->
+          ## 🌍 Translation Check
+          
+          This PR contains documentation changes that are still missing some translations.
+          
+          ### Missing Translations
+          
+          Please check the boxes below for the translations you would like to request. A docs maintainer can trigger automatic translation by commenting `/translate` on this PR.
+          
+          EOF
+          
+          # Append missing translations (decode %0A to actual newlines)
+          echo "$MISSING_CONTENT" | sed 's/%0A/\n/g' >> comment_body.md
+          
+          cat >> comment_body.md << 'EOF'
+          
+          ---
+          *If you've already added these translations manually, please disregard this message. The check will update automatically.*
+          EOF
+          
+          # Update comment
+          gh api \
+            --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            /repos/${{ github.repository }}/issues/comments/${{ steps.find-comment.outputs.comment-id }} \
+            -f body="$(cat comment_body.md)"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Remove needs_translation label if complete
         if: steps.check-completeness.outputs.has_missing == 'false'

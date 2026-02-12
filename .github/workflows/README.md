@@ -144,6 +144,10 @@ Same as above, except step 4:
 ### Required Secrets
 
 - `GITHUB_TOKEN`: Automatically provided by GitHub Actions (no configuration needed)
+- `DOC_MEMBERSHIP_PAT`: Personal Access Token (classic) with `read:org` scope for checking team membership
+  - Required for verifying if users are members of the `docs-maintainer` team
+  - Create at: GitHub Settings → Developer settings → Personal access tokens → Tokens (classic)
+  - Add to repository: Settings → Secrets and variables → Actions → New repository secret
 
 ### Required Permissions
 
