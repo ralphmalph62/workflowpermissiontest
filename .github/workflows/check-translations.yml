@@ -199,17 +199,14 @@ jobs:
           EOF
           
           # Post or update comment
-          # Read the comment body content
-          COMMENT_BODY=$(cat comment_body.md)
-          
           if [ -n "${{ steps.find-comment.outputs.comment-id }}" ]; then
-            # Update existing comment using gh api with stdin
+            # Update existing comment using file input for proper escaping
             gh api \
               --method PATCH \
               -H "Accept: application/vnd.github+json" \
               -H "X-GitHub-Api-Version: 2022-11-28" \
               /repos/${{ github.repository }}/issues/comments/${{ steps.find-comment.outputs.comment-id }} \
-              -f body="$COMMENT_BODY"
+              -F body=@comment_body.md
           else
             # Create new comment
             gh pr comment ${{ github.event.pull_request.number }} --body-file comment_body.md
