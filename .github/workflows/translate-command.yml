@@ -105,9 +105,9 @@ jobs:
           with open('pr_comments.json', 'r') as f:
               comments = json.load(f)
           
-          # Find the translation check comment
+          # Find the translation check comment (get the most recent one in case there are multiple)
           translation_comment = None
-          for comment in comments:
+          for comment in reversed(comments):  # Iterate in reverse to get the most recent first
               if (comment['user']['login'] == 'github-actions[bot]' and 
                   ('Missing translations' in comment['body'] or 'Translation Check' in comment['body'])):
                   translation_comment = comment['body']
@@ -115,16 +115,26 @@ jobs:
           
           if not translation_comment:
               print("No translation check comment found")
+              # Debug: show what comments we found
+              print("\nDebug - Comments found:")
+              for i, comment in enumerate(comments):
+                  user = comment.get('user', {}).get('login', 'unknown')
+                  body_preview = comment.get('body', '')[:60]
+                  print(f"  {i}: {user} - {body_preview}...")
               exit(0)
+          
+          print(f"Found translation check comment (length: {len(translation_comment)} chars)")
           
           # Parse checked boxes from the comment
           # Checkbox format: - [ ] or - [x] followed by file description
           # Example: - [x] **EN → ZH**: `loading/Etl_in_loading.md` *(auto-generated)*
           checked_translations = []
+          checkbox_count = 0
           
           for line in translation_comment.split('\n'):
               # Look for checked boxes: - [x] or - [X]
               if re.match(r'^\s*-\s*\[[xX]\]', line):
+                  checkbox_count += 1
                   # Extract the source language, target language, and file path
                   # Handle multiple regex patterns to account for potential markdown rendering variations:
                   #  - **EN → ZH**: `file/path.md` (ideal)
@@ -151,6 +161,11 @@ jobs:
                       source_file = f"docs/{source_lang}/{rel_path}"
                       checked_translations.append(f"{source_lang}:{target_lang}:{source_file}")
                       print(f"Found checked: {source_lang} → {target_lang}: {rel_path}")
+                  else:
+                      print(f"Warning: Checkbox found but regex didn't match: {line[:80]}")
+          
+          print(f"\nTotal checkboxes found: {checkbox_count}")
+          print(f"Total translations to generate: {len(checked_translations)}")
           
           # Write checked translations to file
           if checked_translations:
