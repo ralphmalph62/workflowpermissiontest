@@ -109,7 +109,7 @@ jobs:
           translation_comment = None
           for comment in comments:
               if (comment['user']['login'] == 'github-actions[bot]' and 
-                  'Missing translations detected' in comment['body']):
+                  ('Missing translations' in comment['body'] or 'Translation Check' in comment['body'])):
                   translation_comment = comment['body']
                   break
           

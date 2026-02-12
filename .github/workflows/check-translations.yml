@@ -98,27 +98,27 @@ jobs:
               # Check English - needs Chinese as source
               if [ "$has_en" = false ]; then
                 if [ "$has_zh" = true ]; then
-                  auto_missing="${auto_missing}- [ ] \`docs/en/$rel_path\`%0A"
+                  auto_missing="${auto_missing}- [ ] **ZH → EN**: \`$rel_path\` *(auto-generated)*%0A"
                 else
-                  manual_missing="${manual_missing}- [ ] \`docs/en/$rel_path\`%0A"
+                  manual_missing="${manual_missing}- [ ] **English**: \`$rel_path\` (requires Chinese source)%0A"
                 fi
               fi
               
               # Check Chinese - needs English as source
               if [ "$has_zh" = false ]; then
                 if [ "$has_en" = true ]; then
-                  auto_missing="${auto_missing}- [ ] \`docs/zh/$rel_path\`%0A"
+                  auto_missing="${auto_missing}- [ ] **EN → ZH**: \`$rel_path\` *(auto-generated)*%0A"
                 else
-                  manual_missing="${manual_missing}- [ ] \`docs/zh/$rel_path\`%0A"
+                  manual_missing="${manual_missing}- [ ] **Chinese**: \`$rel_path\` (requires English source)%0A"
                 fi
               fi
               
               # Check Japanese - needs English as source
               if [ "$has_ja" = false ]; then
                 if [ "$has_en" = true ]; then
-                  auto_missing="${auto_missing}- [ ] \`docs/ja/$rel_path\`%0A"
+                  auto_missing="${auto_missing}- [ ] **EN → JA**: \`$rel_path\` *(auto-generated)*%0A"
                 else
-                  manual_missing="${manual_missing}- [ ] \`docs/ja/$rel_path\`%0A"
+                  manual_missing="${manual_missing}- [ ] **Japanese**: \`$rel_path\` (requires English source)%0A"
                 fi
               fi
             fi

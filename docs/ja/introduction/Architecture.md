@@ -2,6 +2,7 @@
 ---
 displayed_sidebar: docs
 ---
+
 import QSOverview from '../_assets/commonMarkdown/quickstart-overview-tip.mdx'
 
 # Architecture
@@ -24,7 +25,7 @@ StarRocks は、shared-nothing (各 BE がローカルストレージにデー�
 
 ![shared-data-arch](../_assets/shared-nothing.png)
 
-#### Nodes
+#### The nodes
 
 共有なしアーキテクチャにおいて、StarRocks は FE と BE の2種類のノードで構成されます。
 
