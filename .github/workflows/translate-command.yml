@@ -136,10 +136,14 @@ jobs:
           checked_translations = []
           checkbox_count = 0
           
-          for line in translation_comment.split('\n'):
+          print("DEBUG: Analyzing each line of the comment:")
+          for i, line in enumerate(translation_comment.split('\n')):
+              print(f"Line {i}: {repr(line)}")  # repr() shows exact character representation
+              
               # Look for checked boxes: - [x] or - [X]
               if re.match(r'^\s*-\s*\[[xX]\]', line):
                   checkbox_count += 1
+                  print(f"  ✓ Matched checkbox pattern!")
                   # Extract source, target, and path from simple format
                   # Format: - [x] LANG LANG filepath
                   match = re.search(r'^\s*-\s*\[[xX]\]\s+(\w+)\s+(\w+)\s+(\S+)', line)
@@ -155,6 +159,8 @@ jobs:
                       print(f"Found checked: {source_lang} → {target_lang}: {rel_path}")
                   else:
                       print(f"Warning: Checkbox found but could not parse: {line[:80]}")
+              elif '- [' in line:
+                  print(f"  → Line contains '- [' but pattern didn't match")
           
           print(f"\nTotal checkboxes found: {checkbox_count}")
           print(f"Total translations to generate: {len(checked_translations)}")
