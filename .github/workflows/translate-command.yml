@@ -213,70 +213,38 @@ jobs:
         run: |
           cd "$GITHUB_WORKSPACE"
           
-          # Verify the file exists and show its contents
-          echo "=== Checking for missing_translations.txt ==="
-          if [ -f missing_translations.txt ]; then
-            echo "File found. Contents:"
-            cat missing_translations.txt
-            echo ""
-          else
-            echo "ERROR: missing_translations.txt not found!"
-            echo "Current directory: $(pwd)"
-            echo "Files in current directory:"
-            ls -la | head -20
-            exit 1
-          fi
-          
           translation_count=0
           failed_count=0
           
-          echo "=== Starting translation loop ==="
           while IFS= read -r line; do
-            echo "Processing line: $line"
-            
             # Parse line: source_lang:target_lang:source_file
             IFS=':' read -r source_lang target_lang source_file <<< "$line"
-            
-            echo "  Parsed: source_lang=$source_lang, target_lang=$target_lang, source_file=$source_file"
             
             # Derive target file path
             target_file=$(echo "$source_file" | sed "s|docs/$source_lang/|docs/$target_lang/|")
             
-            echo "  Target file: $target_file"
-            
-            # Check if source file exists
-            if [ ! -f "$source_file" ]; then
-              echo "  ERROR: Source file not found: $source_file"
-              failed_count=$((failed_count + 1))
-              continue
-            fi
-            
             # Create target directory if it doesn't exist
             mkdir -p "$(dirname "$target_file")"
             
-            echo "  Translating $source_file ($source_lang) -> $target_file ($target_lang)"
+            echo "Translating $source_file ($source_lang) -> $target_file ($target_lang)"
             
             # Run translation using markdown-translator CLI
             # The tool translates from English to other languages
             cd markdown-translator
-            echo "  Running: node bin/cli.js translate -i '../$source_file' -l '$target_lang' -o '../$target_file'"
+            echo "  Command: node bin/cli.js translate -i '../$source_file' -l '$target_lang' -o '../$target_file'"
             if node bin/cli.js translate \
               -i "../$source_file" \
               -l "$target_lang" \
-              -o "../$target_file"; then
+              -o "../$target_file" 2>&1; then
               translation_count=$((translation_count + 1))
-              echo "  ✓ Successfully translated to $target_file"
+              echo "✓ Successfully translated to $target_file"
             else
+              exit_code=$?
               failed_count=$((failed_count + 1))
-              echo "  ✗ Failed to translate to $target_file (exit code: $?)"
+              echo "✗ Failed to translate to $target_file (exit code: $exit_code)"
             fi
             cd "$GITHUB_WORKSPACE"
           done < missing_translations.txt
-          
-          echo ""
-          echo "=== Translation Summary ==="
-          echo "Successful: $translation_count"
-          echo "Failed: $failed_count"
           
           echo "translation_count=$translation_count" >> $GITHUB_OUTPUT
           echo "failed_count=$failed_count" >> $GITHUB_OUTPUT
