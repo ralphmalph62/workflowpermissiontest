@@ -99,20 +99,26 @@ jobs:
               if [ "$has_en" = false ]; then
                 if [ "$has_zh" = true ]; then
                   auto_missing+="- [ ] zh en $rel_path"$'\n'
+                else
+                  manual_missing+="- [ ] zh en $rel_path"$'\n'
                 fi
               fi
-              
+            
               # Check Chinese - needs English as source
               if [ "$has_zh" = false ]; then
                 if [ "$has_en" = true ]; then
                   auto_missing+="- [ ] en zh $rel_path"$'\n'
+                else
+                  manual_missing+="- [ ] en zh $rel_path"$'\n'
                 fi
               fi
-              
+            
               # Check Japanese - needs English as source
               if [ "$has_ja" = false ]; then
                 if [ "$has_en" = true ]; then
                   auto_missing+="- [ ] en ja $rel_path"$'\n'
+                else
+                  manual_missing+="- [ ] en ja $rel_path"$'\n'
                 fi
               fi
             fi
