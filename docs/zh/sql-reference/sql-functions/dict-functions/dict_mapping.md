@@ -60,6 +60,9 @@ key_column_expr ::= <column_name> | <expr>
       {'label':'insert_9e60b0e4-89fa-11ee-a41f-b22a2c00f66b', 'status':'VISIBLE', 'txnId':'15029'}
       
       SELECT * FROM dict;
+      ```
+
+      ```sql
       +------------+--------------+
       | order_uuid | order_id_int |
       +------------+--------------+
