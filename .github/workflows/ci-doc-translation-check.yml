@@ -103,63 +103,90 @@ jobs:
               return [];
             };
 
+            // Group files by base filename to check if all languages exist
+            const filesByBase = {};
+            files.forEach(file => {
+              if (!fs.existsSync(file)) return;
+              
+              const parts = file.split('/');
+              if (parts.length < 3) return;
+              
+              const lang = parts[1];
+              if (!['en', 'zh', 'ja'].includes(lang)) return;
+              
+              // Get base name: extract everything after the language folder
+              const baseName = parts.slice(2).join('/');
+              
+              if (!filesByBase[baseName]) {
+                filesByBase[baseName] = { en: false, zh: false, ja: false, paths: {} };
+              }
+              filesByBase[baseName][lang] = true;
+              filesByBase[baseName].paths[lang] = file;
+            });
+
             let automatedCheckboxBuffer = "";
             let manualTranslationBuffer = "";
             let hasAutomatedTranslations = false;
             let hasManualTranslations = false;
 
-            files.forEach(file => {
-              if (!fs.existsSync(file)) return;
-
-              const parts = file.split('/');
-              if (parts.length < 2) return; 
+            Object.entries(filesByBase).forEach(([baseName, langData]) => {
+              const allLanguagesPresent = langData.en && langData.zh && langData.ja;
               
-              const sourceLang = parts[1]; 
-              if (!['en', 'zh', 'ja'].includes(sourceLang)) return;
-
-              const validTargets = getValidTargets(sourceLang);
-              
-              if (validTargets.length === 0) {
-                // Japanese files need manual translation from en or zh
-                if (sourceLang === 'ja') {
-                  manualTranslationBuffer += `- \`${file}\` (Japanese file - requires manual translation)\n`;
-                  hasManualTranslations = true;
-                }
+              // If all three language versions exist in the PR, no translation needed
+              if (allLanguagesPresent) {
                 return;
               }
 
-              let automatedChecklist = "";
-              let manualChecklist = "";
-
-              validTargets.forEach(lang => {
-                const targetPath = file.replace(`docs/${sourceLang}/`, `docs/${lang}/`);
-                const isTargetChanged = files.includes(targetPath);
-                const exists = fs.existsSync(targetPath);
+              // Process each language that was changed
+              ['en', 'zh', 'ja'].forEach(sourceLang => {
+                if (!langData[sourceLang]) return; // Only process changed files
                 
-                if (!exists || !isTargetChanged) {
-                  const status = exists ? "(Update)" : "(New)";
-                  
-                  // Check if target language can be automated
-                  // en -> zh/ja can be automated, zh -> en can be automated
-                  const canAutomate = (sourceLang === 'en' || (sourceLang === 'zh' && lang === 'en'));
-                  
-                  if (canAutomate) {
-                    automatedChecklist += `- [ ] **${lang}** for \`${file}\` ${status}\n`;
-                  } else {
-                    manualChecklist += `- **${lang}** for \`${file}\` ${status}\n`;
+                const file = langData.paths[sourceLang];
+                const validTargets = getValidTargets(sourceLang);
+                
+                if (validTargets.length === 0) {
+                  // Japanese files need manual translation from en or zh
+                  if (sourceLang === 'ja') {
+                    // Check if en or zh versions exist in repo
+                    const enExists = langData.en;
+                    const zhExists = langData.zh;
+                    
+                    if (!enExists && !zhExists) {
+                      manualTranslationBuffer += `- \`${file}\` (Japanese file - requires English or Chinese source)\n`;
+                      hasManualTranslations = true;
+                    }
                   }
+                  return;
+                }
+
+                // Check which target translations are needed
+                let automatedChecklist = "";
+                let manualChecklist = "";
+
+                validTargets.forEach(lang => {
+                  if (!langData[lang]) {
+                    // Target language doesn't exist
+                    const status = "(New)";
+                    const canAutomate = (sourceLang === 'en' || (sourceLang === 'zh' && lang === 'en'));
+                    
+                    if (canAutomate) {
+                      automatedChecklist += `- [ ] **${lang}** for \`${file}\` ${status}\n`;
+                    } else {
+                      manualChecklist += `- **${lang}** for \`${file}\` ${status}\n`;
+                    }
+                  }
+                });
+
+                if (automatedChecklist) {
+                  hasAutomatedTranslations = true;
+                  automatedCheckboxBuffer += `#### \`${file}\`\n${automatedChecklist}\n`;
+                }
+
+                if (manualChecklist) {
+                  hasManualTranslations = true;
+                  manualTranslationBuffer += `#### \`${file}\`\n${manualChecklist}\n`;
                 }
               });
-
-              if (automatedChecklist) {
-                hasAutomatedTranslations = true;
-                automatedCheckboxBuffer += `#### \`${file}\`\n${automatedChecklist}\n`;
-              }
-
-              if (manualChecklist) {
-                hasManualTranslations = true;
-                manualTranslationBuffer += `#### \`${file}\`\n${manualChecklist}\n`;
-              }
             });
 
             // 3. Output logic
@@ -185,10 +212,6 @@ jobs:
                 body += manualTranslationBuffer;
               }
             }
-
-            body += `\n\n> 🕒 **Last updated:** ${timestamp}`;
-            
-            core.setOutput('body', body);
 
             body += `\n\n> 🕒 **Last updated:** ${timestamp}`;
             
