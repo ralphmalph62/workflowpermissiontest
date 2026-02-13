@@ -285,7 +285,7 @@ jobs:
             fi
             
             echo "  Source file found, translating..."
-            (cd markdown-translator && node bin/cli.js translate -i "../$source_file" -l "$target_lang" -o "../$target_file" 2>&1)
+            (cd markdown-translator && node bin/cli.js translate -i "../$source_file" -s "$source_lang" -l "$target_lang" -o "../$target_file" 2>&1)
             result=$?
             echo "  Translation command exit code: $result"
             
