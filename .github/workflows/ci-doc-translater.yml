@@ -112,16 +112,17 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Install Prerequisites for Translation
+        run: |
+          cd trusted_tools/docs/translation
+          npm install
 
       - name: Run Translations
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           BODY: ${{ steps.get_checks.outputs.result }}
           FILES_JSON: ${{ steps.changed-files.outputs.all_changed_files }}
-        run: |
-          cd trusted_tools/
-          npm install
-          
+        run: |          
           for FILE in $(echo "$FILES_JSON" | sed 's/\\"/"/g' | jq -r '.[]'); do
             if [[ "$FILE" =~ ^docs/(en|zh|ja)/ ]]; then
               SRC=$(echo $FILE | cut -d'/' -f2)
@@ -135,6 +136,14 @@ jobs:
                 if [[ "$BODY" == *"$GLOBAL_STR"* ]] || [[ "$BODY" == *"$INDIVIDUAL_STR"* ]]; then
                   echo "🚀 Starting translation for $FILE to $LANG"
                   echo "python trusted_tools/docs/translation/translate.py -l $LANG --files \"pr_code/$FILE\""
+                  # python trusted_tools/docs/translation/translate.py \
+                  #  -l zh \
+                  #  --files "pr_code/docs/en/loading/BrokerLoad.md"
+                  echo "node bin/cli.js translate \
+                     --input "pr_code/$FILE\" \
+                     --language $LANG \
+                     --source $SRC \
+                     --output-dir pr_code/examples/StarRocksTest.$LANG.md"
                 fi
               done
             fi
