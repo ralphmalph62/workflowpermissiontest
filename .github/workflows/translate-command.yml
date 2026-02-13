@@ -101,6 +101,13 @@ jobs:
           import json
           import re
           
+          # Language code mappings
+          LANG_TO_CODE = {
+              'english': 'en',
+              'chinese': 'zh',
+              'japanese': 'ja'
+          }
+          
           # Read comments
           with open('pr_comments.json', 'r') as f:
               comments = json.load(f)
@@ -131,8 +138,10 @@ jobs:
           print(f"Found translation check comment (length: {len(translation_comment)} chars)")
           
           # Parse checked boxes from the comment
-          # Simplified format: - [x] source target filepath
-          # Example: - [x] zh en introduction/Architecture.md
+          # New format: - [x] SourceLang to TargetLang: filepath
+          # Old format support: - [x] source target filepath
+          # Example new: - [x] English to Japanese: introduction/Architecture.md
+          # Example old: - [x] en ja introduction/Architecture.md
           checked_translations = []
           checkbox_count = 0
           
@@ -144,21 +153,38 @@ jobs:
               if re.match(r'^\s*-\s*\[[xX]\]', line):
                   checkbox_count += 1
                   print(f"  ✓ Matched checkbox pattern!")
-                  # Extract source, target, and path from simple format
-                  # Format: - [x] LANG LANG filepath
-                  match = re.search(r'^\s*-\s*\[[xX]\]\s+(\w+)\s+(\w+)\s+(\S+)', line)
+                  
+                  # Try new format first: "Language1 to Language2: filepath"
+                  match = re.search(r'^\s*-\s*\[[xX]\]\s+(\w+)\s+to\s+(\w+):\s+(\S+)', line)
                   
                   if match:
-                      source_lang = match.group(1).lower()
-                      target_lang = match.group(2).lower()
+                      source_lang_name = match.group(1).lower()
+                      target_lang_name = match.group(2).lower()
                       rel_path = match.group(3)
+                      
+                      # Convert language names to codes
+                      source_lang = LANG_TO_CODE.get(source_lang_name, source_lang_name)
+                      target_lang = LANG_TO_CODE.get(target_lang_name, target_lang_name)
                       
                       # Build the translation entry
                       source_file = f"docs/{source_lang}/{rel_path}"
                       checked_translations.append(f"{source_lang}:{target_lang}:{source_file}")
-                      print(f"Found checked: {source_lang} → {target_lang}: {rel_path}")
+                      print(f"Found checked (new format): {source_lang} → {target_lang}: {rel_path}")
                   else:
-                      print(f"Warning: Checkbox found but could not parse: {line[:80]}")
+                      # Try old format: "source target filepath"
+                      match = re.search(r'^\s*-\s*\[[xX]\]\s+(\w+)\s+(\w+)\s+(\S+)', line)
+                      
+                      if match:
+                          source_lang = match.group(1).lower()
+                          target_lang = match.group(2).lower()
+                          rel_path = match.group(3)
+                          
+                          # Build the translation entry
+                          source_file = f"docs/{source_lang}/{rel_path}"
+                          checked_translations.append(f"{source_lang}:{target_lang}:{source_file}")
+                          print(f"Found checked (old format): {source_lang} → {target_lang}: {rel_path}")
+                      else:
+                          print(f"Warning: Checkbox found but could not parse: {line[:80]}")
               elif '- [' in line:
                   print(f"  → Line contains '- [' but pattern didn't match")
           
