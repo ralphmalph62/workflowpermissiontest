@@ -130,10 +130,9 @@ jobs:
                 if [ "$SRC" == "$LANG" ]; then continue; fi
                 
                 FULL_LANG=$(echo $LANG | sed 's/ja/Japanese/;s/zh/Chinese/;s/en/English/')
-                GLOBAL_STR=" [x] **$FULL_LANG ($LANG)** for **ALL** missing/outdated files"
                 INDIVIDUAL_STR=" [x] **$LANG** for \`$SOURCE_FILE\`"
                 
-                if [[ "$BODY" == *"$GLOBAL_STR"* ]] || [[ "$BODY" == *"$INDIVIDUAL_STR"* ]]; then
+                if [[ "$BODY" == *"$INDIVIDUAL_STR"* ]]; then
                   echo "🚀 Starting translation for $SOURCE_FILE to $LANG"
                   DEST_FILE=$(echo "$SOURCE_FILE" | sed "s|docs/$SRC/|docs/$LANG/|")
                   

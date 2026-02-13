@@ -98,11 +98,6 @@ jobs:
               body += "If you are fluent in any of the missing languages you can add them. If not, a maintainer will take a look and generate the changes below.\n\n";
               body += "**Maintainer:** Check the ones you wish to generate:\n\n";
               
-              body += "#### ⚡ Global Actions\n";
-              body += "- [ ] **Japanese (ja)** for **ALL** missing/outdated files\n";
-              body += "- [ ] **Chinese (zh)** for **ALL** missing/outdated files\n";
-              body += "- [ ] **English (en)** for **ALL** missing/outdated files\n\n---\n";
-
               body += contentBuffer;
               body += "---\n*Maintainers: Check boxes and reply with `/translate` to start.*\n";
             }
