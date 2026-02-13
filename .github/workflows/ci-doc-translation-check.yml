@@ -168,3 +168,5 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: ${{ steps.pr_number.outputs.pr_number }},
+              labels: ['docs-maintainer']
+            });
