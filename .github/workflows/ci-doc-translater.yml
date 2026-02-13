@@ -136,20 +136,8 @@ jobs:
                 if [[ "$BODY" == *"$GLOBAL_STR"* ]] || [[ "$BODY" == *"$INDIVIDUAL_STR"* ]]; then
                   echo "🚀 Starting translation for $SOURCE_FILE to $LANG"
                   DEST_FILE=$(echo "$SOURCE_FILE" | sed "s|docs/$SRC/|docs/$LANG/|")
-                  echo "python trusted_tools/docs/translation/translate.py -l $LANG --files \"pr_code/$SOURCE_FILE\""
-                  # python trusted_tools/docs/translation/translate.py \
-                  #  -l zh \
-                  #  --files "pr_code/docs/en/loading/BrokerLoad.md"
-                  echo "node trusted_tools/bin/cli.js translate \
-                     --input "pr_code/$SOURCE_FILE\" \
-                     --language $LANG \
-                     --source $SRC \
-                     --output pr_code/$DEST_FILE"
-                  node trusted_tools/bin/cli.js translate \
-                     --input "pr_code/$SOURCE_FILE\" \
-                     --language $LANG \
-                     --source $SRC \
-                     --output "pr_code/$DEST_FILE"
+                  
+                  node trusted_tools/bin/cli.js translate --input "pr_code/$SOURCE_FILE" --language $LANG --source $SRC --output "pr_code/$DEST_FILE"
                 fi
               done
             fi
