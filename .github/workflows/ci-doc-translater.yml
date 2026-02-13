@@ -123,32 +123,33 @@ jobs:
           BODY: ${{ steps.get_checks.outputs.result }}
           FILES_JSON: ${{ steps.changed-files.outputs.all_changed_files }}
         run: |          
-          for FILE in $(echo "$FILES_JSON" | sed 's/\\"/"/g' | jq -r '.[]'); do
-            if [[ "$FILE" =~ ^docs/(en|zh|ja)/ ]]; then
-              SRC=$(echo $FILE | cut -d'/' -f2)
+          for SOURCE_FILE in $(echo "$FILES_JSON" | sed 's/\\"/"/g' | jq -r '.[]'); do
+            if [[ "$SOURCE_FILE" =~ ^docs/(en|zh|ja)/ ]]; then
+              SRC=$(echo $SOURCE_FILE | cut -d'/' -f2)
               for LANG in ja zh en; do
                 if [ "$SRC" == "$LANG" ]; then continue; fi
                 
                 FULL_LANG=$(echo $LANG | sed 's/ja/Japanese/;s/zh/Chinese/;s/en/English/')
                 GLOBAL_STR=" [x] **$FULL_LANG ($LANG)** for **ALL** missing/outdated files"
-                INDIVIDUAL_STR=" [x] **$LANG** for \`$FILE\`"
+                INDIVIDUAL_STR=" [x] **$LANG** for \`$SOURCE_FILE\`"
                 
                 if [[ "$BODY" == *"$GLOBAL_STR"* ]] || [[ "$BODY" == *"$INDIVIDUAL_STR"* ]]; then
-                  echo "🚀 Starting translation for $FILE to $LANG"
-                  echo "python trusted_tools/docs/translation/translate.py -l $LANG --files \"pr_code/$FILE\""
+                  echo "🚀 Starting translation for $SOURCE_FILE to $LANG"
+                  DEST_FILE=$(echo "$SOURCE_FILE" | sed "s|docs/$SRC/|docs/$LANG/|")
+                  echo "python trusted_tools/docs/translation/translate.py -l $LANG --files \"pr_code/$SOURCE_FILE\""
                   # python trusted_tools/docs/translation/translate.py \
                   #  -l zh \
                   #  --files "pr_code/docs/en/loading/BrokerLoad.md"
                   echo "node trusted_tools/bin/cli.js translate \
-                     --input "pr_code/$FILE\" \
+                     --input "pr_code/$SOURCE_FILE\" \
                      --language $LANG \
                      --source $SRC \
-                     --output-dir pr_code/examples/StarRocksTest.$LANG.md"
+                     --output pr_code/$DEST_FILE"
                   node trusted_tools/bin/cli.js translate \
-                     --input "pr_code/$FILE\" \
+                     --input "pr_code/$SOURCE_FILE\" \
                      --language $LANG \
                      --source $SRC \
-                     --output-dir pr_code/examples/StarRocksTest.$LANG.md
+                     --output "pr_code/$DEST_FILE"
                 fi
               done
             fi
