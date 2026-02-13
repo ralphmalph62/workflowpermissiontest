@@ -92,8 +92,21 @@ jobs:
               return;
             }
 
-            let contentBuffer = "";
-            let hasMissingTranslations = false;
+            // Translation rules:
+            // - English (en) can translate to: Chinese (zh), Japanese (ja)
+            // - Chinese (zh) can translate to: English (en) only
+            // - Japanese (ja) cannot be a source file
+            const getValidTargets = (sourceLang) => {
+              if (sourceLang === 'en') return ['zh', 'ja'];
+              if (sourceLang === 'zh') return ['en'];
+              if (sourceLang === 'ja') return []; // Japanese files are not source files
+              return [];
+            };
+
+            let automatedCheckboxBuffer = "";
+            let manualTranslationBuffer = "";
+            let hasAutomatedTranslations = false;
+            let hasManualTranslations = false;
 
             files.forEach(file => {
               if (!fs.existsSync(file)) return;
@@ -104,40 +117,78 @@ jobs:
               const sourceLang = parts[1]; 
               if (!['en', 'zh', 'ja'].includes(sourceLang)) return;
 
-              const targets = ['en', 'zh', 'ja'].filter(l => l !== sourceLang);
+              const validTargets = getValidTargets(sourceLang);
               
-              let fileChecklist = "";
-              targets.forEach(lang => {
+              if (validTargets.length === 0) {
+                // Japanese files need manual translation from en or zh
+                if (sourceLang === 'ja') {
+                  manualTranslationBuffer += `- \`${file}\` (Japanese file - requires manual translation)\n`;
+                  hasManualTranslations = true;
+                }
+                return;
+              }
+
+              let automatedChecklist = "";
+              let manualChecklist = "";
+
+              validTargets.forEach(lang => {
                 const targetPath = file.replace(`docs/${sourceLang}/`, `docs/${lang}/`);
                 const isTargetChanged = files.includes(targetPath);
                 const exists = fs.existsSync(targetPath);
                 
                 if (!exists || !isTargetChanged) {
                   const status = exists ? "(Update)" : "(New)";
-                  fileChecklist += `- [ ] **${lang}** for \`${file}\` ${status}\n`;
+                  
+                  // Check if target language can be automated
+                  // en -> zh/ja can be automated, zh -> en can be automated
+                  const canAutomate = (sourceLang === 'en' || (sourceLang === 'zh' && lang === 'en'));
+                  
+                  if (canAutomate) {
+                    automatedChecklist += `- [ ] **${lang}** for \`${file}\` ${status}\n`;
+                  } else {
+                    manualChecklist += `- **${lang}** for \`${file}\` ${status}\n`;
+                  }
                 }
               });
 
-              if (fileChecklist) {
-                hasMissingTranslations = true;
-                contentBuffer += `#### \`${file}\`\n${fileChecklist}\n`;
+              if (automatedChecklist) {
+                hasAutomatedTranslations = true;
+                automatedCheckboxBuffer += `#### \`${file}\`\n${automatedChecklist}\n`;
+              }
+
+              if (manualChecklist) {
+                hasManualTranslations = true;
+                manualTranslationBuffer += `#### \`${file}\`\n${manualChecklist}\n`;
               }
             });
 
             // 3. Output logic
-            if (!hasMissingTranslations) {
+            if (!hasAutomatedTranslations && !hasManualTranslations) {
               // SUCCESS CASE: Keep the header so we find the comment next time!
               body += "\n✅ **All translation files are up to date.**\n";
               body += "Great job! No translation actions are required for this PR.\n";
             } else {
               // ACTION REQUIRED CASE
               body += "Thanks for your doc contribution! The following languages are missing or outdated for your changes.\n\n";
-              body += "If you are fluent in any of the missing languages you can add them. If not, a maintainer will take a look and generate the changes below.\n\n";
-              body += "**Maintainer:** Check the ones you wish to generate:\n\n";
               
-              body += contentBuffer;
-              body += "---\n*Maintainers: Check boxes and reply with `/translate` to start.*\n";
+              if (hasAutomatedTranslations) {
+                body += "## 🤖 Automated Translations\n";
+                body += "If you are fluent in any of the missing languages you can add them. If not, a maintainer can generate the translations below.\n\n";
+                body += "**Maintainer:** Check the ones you wish to generate:\n\n";
+                body += automatedCheckboxBuffer;
+                body += "---\n*Maintainers: Check boxes and reply with `/translate` to start.*\n\n";
+              }
+
+              if (hasManualTranslations) {
+                body += "## 👤 Manual Translations Required\n";
+                body += "The following translations must be done manually by a human translator:\n\n";
+                body += manualTranslationBuffer;
+              }
             }
+
+            body += `\n\n> 🕒 **Last updated:** ${timestamp}`;
+            
+            core.setOutput('body', body);
 
             body += `\n\n> 🕒 **Last updated:** ${timestamp}`;
             
