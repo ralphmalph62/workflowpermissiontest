@@ -1,465 +1,190 @@
-name: Handle Translation Command
-
+name: Translation Runner
 on:
   issue_comment:
     types: [created]
 
-permissions:
-  contents: write
-  pull-requests: write
-
 jobs:
   translate:
-    # Only run if the comment is on a PR and contains /translate
-    if: |
-      github.event.issue.pull_request &&
-      contains(github.event.comment.body, '/translate')
+    if: github.event.issue.pull_request && startsWith(github.event.comment.body, '/translate')
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
-      - name: Check if commenter is docs-maintainer
-        id: check-permission
+      - name: Get list of docs-maintainers
         run: |
-          # Check if the user is a member of the docs-maintainer team
-          # Organization: extract from repository (e.g., "owner/repo" -> "owner")
-          ORG=$(echo "${{ github.repository }}" | cut -d'/' -f1)
-          USER="${{ github.event.comment.user.login }}"
-          
-          # Check team membership using GitHub API
-          response=$(gh api \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            /orgs/$ORG/teams/docs-maintainer/memberships/$USER \
-            --silent 2>&1 || echo "not_member")
-          
-          if [[ "$response" == *"not_member"* ]] || [[ "$response" == *"Not Found"* ]]; then
-            echo "User $USER is not a member of docs-maintainer team"
-            echo "is_maintainer=false" >> $GITHUB_OUTPUT
+          DOC_MEMBERSHIP_PAT=${{ secrets.DOC_MEMBERSHIP_PAT || secrets.GITHUB_TOKEN }}
+          DOCS_MAINTAINERS=$(curl -s -H "Authorization: token $DOC_MEMBERSHIP_PAT" \
+          "https://api.github.com/orgs/starrocks/teams/docs-maintainer/members" | jq -r '.[].login')
+          echo "$DOCS_MAINTAINERS" > allowlisted_users.txt
+
+      - name: Verify approver membership
+        id: verify-approver
+        run: |
+          APPROVER="${{ github.event.comment.user.login }}"
+          if grep -q --line-regexp "$APPROVER" allowlisted_users.txt; then
+            echo "is_allowlisted=true" >> $GITHUB_OUTPUT
           else
-            echo "User $USER is a member of docs-maintainer team"
-            echo "is_maintainer=true" >> $GITHUB_OUTPUT
+            echo "::error::User $APPROVER is not authorized."
+            exit 1
           fi
-        env:
-          GH_TOKEN: ${{ secrets.DOC_MEMBERSHIP_PAT }}
 
-      - name: Add reaction to comment
-        if: steps.check-permission.outputs.is_maintainer == 'true'
+      - name: Acknowledge Command
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: 'eyes'
+            });
+
+      # NEW STEP: Adds the direct link to the running workflow
+      - name: Post Run Link
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const newBody = context.payload.comment.body + `\n\n**Maintainer:** monitor the translation in the [GitHub Actions tab](${runUrl})`;
+            
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              body: newBody
+            });
+
+      - name: Get PR Information
+        id: pr_data
         run: |
-          gh api \
-            --method POST \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            /repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions \
-            -f content='rocket'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_JSON=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "${{ github.event.issue.pull_request.url }}")
+          # NEW: Get the exact SHA of the base
+          echo "base_sha=$(echo $PR_JSON | jq -r '.base.sha')" >> $GITHUB_OUTPUT
+          echo "base_ref=$(echo $PR_JSON | jq -r '.base.ref')" >> $GITHUB_OUTPUT
+          echo "head_ref=$(echo $PR_JSON | jq -r '.head.ref')" >> $GITHUB_OUTPUT
+          echo "head_repo_name=$(echo $PR_JSON | jq -r '.head.repo.full_name')" >> $GITHUB_OUTPUT
 
-      - name: Get PR details
-        if: steps.check-permission.outputs.is_maintainer == 'true'
-        id: pr-details
-        run: |
-          PR_DATA=$(gh api \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            /repos/${{ github.repository }}/pulls/${{ github.event.issue.number }})
-          
-          HEAD_REF=$(echo "$PR_DATA" | jq -r '.head.ref')
-          HEAD_SHA=$(echo "$PR_DATA" | jq -r '.head.sha')
-          HEAD_REPO=$(echo "$PR_DATA" | jq -r '.head.repo.full_name')
-          BASE_SHA=$(echo "$PR_DATA" | jq -r '.base.sha')
-          IS_FORK=$(echo "$PR_DATA" | jq -r '.head.repo.fork')
-          
-          echo "head_ref=$HEAD_REF" >> $GITHUB_OUTPUT
-          echo "head_sha=$HEAD_SHA" >> $GITHUB_OUTPUT
-          echo "head_repo=$HEAD_REPO" >> $GITHUB_OUTPUT
-          echo "base_sha=$BASE_SHA" >> $GITHUB_OUTPUT
-          echo "is_fork=$IS_FORK" >> $GITHUB_OUTPUT
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Checkout PR branch
-        if: steps.check-permission.outputs.is_maintainer == 'true'
+      - name: Checkout PR (Untrusted Content)
         uses: actions/checkout@v4
         with:
-          repository: ${{ steps.pr-details.outputs.head_repo }}
-          ref: ${{ steps.pr-details.outputs.head_ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ steps.pr_data.outputs.head_repo_name }}
+          ref: ${{ steps.pr_data.outputs.head_ref }}
+          path: pr_code
           fetch-depth: 0
 
-      - name: Get checked translations from comment
-        if: steps.check-permission.outputs.is_maintainer == 'true'
-        id: get-files
+      - name: Fetch Upstream Base
         run: |
-          # Fetch all comments on the PR
-          gh api \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "/repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments" \
-            > pr_comments.json
-          
-          # Find the translation check comment (by github-actions[bot] containing "Missing translations")
-          python3 << 'PYTHON_SCRIPT'
-          import json
-          import re
-          
-          # Language code mappings
-          LANG_TO_CODE = {
-              'english': 'en',
-              'chinese': 'zh',
-              'japanese': 'ja'
-          }
-          
-          # Read comments
-          with open('pr_comments.json', 'r') as f:
-              comments = json.load(f)
-          
-          # Find the translation check comment (get the most recent one in case there are multiple)
-          translation_comment = None
-          comment_index = -1
-          for i, comment in enumerate(reversed(comments)):  # Iterate in reverse to get the most recent first
-              if (comment['user']['login'] == 'github-actions[bot]' and 
-                  ('Missing translations' in comment['body'] or 'Translation Check' in comment['body'])):
-                  translation_comment = comment['body']
-                  comment_index = i
-                  break
-          
-          print(f"Processed {len(comments)} comments total")
-          print(f"Found translation check comment at index {comment_index} (reversed)")
-          
-          if not translation_comment:
-              print("No translation check comment found")
-              # Debug: show what comments we found
-              print("\nDebug - Comments found:")
-              for i, comment in enumerate(comments):
-                  user = comment.get('user', {}).get('login', 'unknown')
-                  body_preview = comment.get('body', '')[:60]
-                  print(f"  {i}: {user} - {body_preview}...")
-              exit(0)
-          
-          print(f"Found translation check comment (length: {len(translation_comment)} chars)")
-          
-          # Parse checked boxes from the comment
-          # New format: - [x] SourceLang to TargetLang: filepath
-          # Old format support: - [x] source target filepath
-          # Example new: - [x] English to Japanese: introduction/Architecture.md
-          # Example old: - [x] en ja introduction/Architecture.md
-          checked_translations = []
-          checkbox_count = 0
-          
-          print("DEBUG: Analyzing each line of the comment:")
-          for i, line in enumerate(translation_comment.split('\n')):
-              print(f"Line {i}: {repr(line)}")  # repr() shows exact character representation
-              
-              # Look for checked boxes: - [x] or - [X]
-              if re.match(r'^\s*-\s*\[[xX]\]', line):
-                  checkbox_count += 1
-                  print(f"  ✓ Matched checkbox pattern!")
-                  
-                  # Try new format first: "Language1 to Language2: filepath"
-                  match = re.search(r'^\s*-\s*\[[xX]\]\s+(\w+)\s+to\s+(\w+):\s+(\S+)', line)
-                  
-                  if match:
-                      source_lang_name = match.group(1).lower()
-                      target_lang_name = match.group(2).lower()
-                      rel_path = match.group(3)
-                      
-                      # Convert language names to codes
-                      source_lang = LANG_TO_CODE.get(source_lang_name, source_lang_name)
-                      target_lang = LANG_TO_CODE.get(target_lang_name, target_lang_name)
-                      
-                      # Build the translation entry
-                      source_file = f"docs/{source_lang}/{rel_path}"
-                      checked_translations.append(f"{source_lang}:{target_lang}:{source_file}")
-                      print(f"Found checked (new format): {source_lang} → {target_lang}: {rel_path}")
-                  else:
-                      # Try old format: "source target filepath"
-                      match = re.search(r'^\s*-\s*\[[xX]\]\s+(\w+)\s+(\w+)\s+(\S+)', line)
-                      
-                      if match:
-                          source_lang = match.group(1).lower()
-                          target_lang = match.group(2).lower()
-                          rel_path = match.group(3)
-                          
-                          # Build the translation entry
-                          source_file = f"docs/{source_lang}/{rel_path}"
-                          checked_translations.append(f"{source_lang}:{target_lang}:{source_file}")
-                          print(f"Found checked (old format): {source_lang} → {target_lang}: {rel_path}")
-                      else:
-                          print(f"Warning: Checkbox found but could not parse: {line[:80]}")
-              elif '- [' in line:
-                  print(f"  → Line contains '- [' but pattern didn't match")
-          
-          print(f"\nTotal checkboxes found: {checkbox_count}")
-          print(f"Total translations to generate: {len(checked_translations)}")
-          
-          # Write checked translations to file
-          if checked_translations:
-              with open('missing_translations.txt', 'w') as f:
-                  f.write('\n'.join(checked_translations) + '\n')  # Add trailing newline
-              print(f"\nTotal checked translations: {len(checked_translations)}")
-          else:
-              print("No checked translations found")
-          PYTHON_SCRIPT
-          
-          if [ -f missing_translations.txt ] && [ -s missing_translations.txt ]; then
-            echo "has_files=true" >> $GITHUB_OUTPUT
-            echo "Files to translate:"
-            cat missing_translations.txt
-          else
-            echo "has_files=false" >> $GITHUB_OUTPUT
-            echo "No translations selected. Please check the boxes in the translation comment for the files you want to translate."
-          fi
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          cd pr_code
+          git remote add upstream https://github.com/${{ github.repository }}.git
+          git fetch upstream ${{ steps.pr_data.outputs.base_sha }}
 
-      - name: Checkout markdown-translator
-        if: steps.check-permission.outputs.is_maintainer == 'true' && steps.get-files.outputs.has_files == 'true'
+      - name: Checkout Trusted Tools
         uses: actions/checkout@v4
         with:
-          repository: 'StarRocks/markdown-translator'
-          ref: 'main'
-          path: 'markdown-translator'
+          repository: StarRocks/markdown-translator
+          ref: main
+          path: trusted_tools
+
+      - name: Get Changed Files
+        id: changed-files
+        uses: tj-actions/changed-files@v44
+        with:
+          path: pr_code
+          base_sha: ${{ steps.pr_data.outputs.base_sha }}
+          json: true
+
+      - name: Get Checkbox State
+        id: get_checks
+        uses: actions/github-script@v7
+        with:
+          result-encoding: string
+          script: |
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number,
+            });
+            const report = comments.find(c => c.body.includes('### 🌎 Translation Required?'));
+            return report ? report.body : '';
 
       - name: Setup Node.js
-        if: steps.check-permission.outputs.is_maintainer == 'true' && steps.get-files.outputs.has_files == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '24'
 
-      - name: Install translation dependencies
-        if: steps.check-permission.outputs.is_maintainer == 'true' && steps.get-files.outputs.has_files == 'true'
-        run: |
-          cd markdown-translator
-          npm install
-
-      - name: Generate translations
-        if: steps.check-permission.outputs.is_maintainer == 'true' && steps.get-files.outputs.has_files == 'true'
-        id: translate
+      - name: Run Translations
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          BODY: ${{ steps.get_checks.outputs.result }}
+          FILES_JSON: ${{ steps.changed-files.outputs.all_changed_files }}
         run: |
-          set -x
-          echo "=== Starting translation generation ==="
-          cd "$GITHUB_WORKSPACE" || { echo "ERROR: Failed to cd to GITHUB_WORKSPACE"; exit 1; }
-          pwd
-          ls -la missing_translations.txt 2>&1 || echo "File missing_translations.txt not found"
+          cd trusted_tools/
+          npm install
           
-          # Check if file exists
-          if [ ! -f missing_translations.txt ]; then
-            echo "ERROR: missing_translations.txt not found!"
-            ls -la
-            echo "success=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          
-          echo "=== File found - contents: ==="
-          cat missing_translations.txt
-          echo "=== Starting translation process ==="
-          
-          translation_count=0
-          failed_count=0
-          line_count=0
-          
-          # Read file line by line
-          while IFS= read -r line || [ -n "$line" ]; do
-            line_count=$((line_count + 1))
-            echo "Processing line $line_count: $line"
-            
-            # Parse the line format: source_lang:target_lang:source_file
-            source_lang=$(echo "$line" | cut -d: -f1)
-            target_lang=$(echo "$line" | cut -d: -f2)
-            source_file=$(echo "$line" | cut -d: -f3-)
-            
-            echo "  source_lang=$source_lang, target_lang=$target_lang, source_file=$source_file"
-            
-            # Derive target file path
-            target_file=$(echo "$source_file" | sed "s|docs/$source_lang/|docs/$target_lang/|")
-            echo "  Derived target_file=$target_file"
-            
-            mkdir -p "$(dirname "$target_file")"
-            
-            # Check if source file exists
-            if [ ! -f "$source_file" ]; then
-              echo "  ERROR: Source file not found: $source_file"
-              failed_count=$((failed_count + 1))
-              continue
+          for FILE in $(echo "$FILES_JSON" | sed 's/\\"/"/g' | jq -r '.[]'); do
+            if [[ "$FILE" =~ ^docs/(en|zh|ja)/ ]]; then
+              SRC=$(echo $FILE | cut -d'/' -f2)
+              for LANG in ja zh en; do
+                if [ "$SRC" == "$LANG" ]; then continue; fi
+                
+                FULL_LANG=$(echo $LANG | sed 's/ja/Japanese/;s/zh/Chinese/;s/en/English/')
+                GLOBAL_STR=" [x] **$FULL_LANG ($LANG)** for **ALL** missing/outdated files"
+                INDIVIDUAL_STR=" [x] **$LANG** for \`$FILE\`"
+                
+                if [[ "$BODY" == *"$GLOBAL_STR"* ]] || [[ "$BODY" == *"$INDIVIDUAL_STR"* ]]; then
+                  echo "🚀 Starting translation for $FILE to $LANG"
+                  echo "python trusted_tools/docs/translation/translate.py -l $LANG --files \"pr_code/$FILE\""
+                fi
+              done
             fi
-            
-            echo "  Source file found, translating..."
-            (cd markdown-translator && node bin/cli.js translate -i "../$source_file" -s "$source_lang" -l "$target_lang" -o "../$target_file" 2>&1)
-            result=$?
-            echo "  Translation command exit code: $result"
-            
-            if [ $result -eq 0 ]; then
-              translation_count=$((translation_count + 1))
-              echo "  ✓ SUCCESS"
-            else
-              failed_count=$((failed_count + 1))
-              echo "  ✗ FAILED"
-            fi
-          done < missing_translations.txt
-          
-          echo "=== Translation complete ==="
-          echo "Results: $translation_count successful, $failed_count failed (processed $line_count lines)"
-          echo "translation_count=$translation_count" >> $GITHUB_OUTPUT
-          echo "failed_count=$failed_count" >> $GITHUB_OUTPUT
-          
-          if [ $translation_count -gt 0 ]; then
-            echo "success=true" >> $GITHUB_OUTPUT
-          else
-            echo "success=false" >> $GITHUB_OUTPUT
-          fi
+          done
 
-      - name: Configure git
-        if: steps.check-permission.outputs.is_maintainer == 'true' && steps.translate.outputs.success == 'true'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Commit and push translations
-        if: steps.check-permission.outputs.is_maintainer == 'true' && steps.translate.outputs.success == 'true'
-        id: push
-        run: |
-          # Add translated files
-          git add docs/en/ docs/zh/ docs/ja/
-          
-          # Check if there are changes to commit
-          if git diff --cached --quiet; then
-            echo "No changes to commit"
-            echo "pushed=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          
-          # Commit changes
-          git commit -m "chore: add automated translations
-
-          Generated by markdown-translator
-          Triggered by: @${{ github.event.comment.user.login }}"
-          
-          # Push to PR branch
-          # For fork PRs, this requires a PAT with appropriate permissions
-          if [ "${{ steps.pr-details.outputs.is_fork }}" == "true" ]; then
-            echo "⚠️ Cannot push directly to fork. Translations need to be submitted via separate PR."
-            echo "pushed=false" >> $GITHUB_OUTPUT
-            
-            # Create a patch file instead
-            git format-patch -1 HEAD --stdout > translations.patch
-            echo "Created translations.patch"
-          else
-            git push origin ${{ steps.pr-details.outputs.head_ref }}
-            echo "pushed=true" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Add translations_added label
-        if: steps.check-permission.outputs.is_maintainer == 'true' && steps.push.outputs.pushed == 'true'
-        run: |
-          gh pr edit ${{ github.event.issue.number }} --add-label "translations_added"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Comment on success
-        if: steps.check-permission.outputs.is_maintainer == 'true' && steps.push.outputs.pushed == 'true'
-        run: |
-          gh pr comment ${{ github.event.issue.number }} --body \
-            "✅ Successfully generated and pushed ${{ steps.translate.outputs.translation_count }} translation(s).
-            
-            The \`translations_added\` label has been added to this PR."
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Update translation check comment
-        if: steps.check-permission.outputs.is_maintainer == 'true' && steps.push.outputs.pushed == 'true'
-        run: |
-          # Get the latest changes
-          BASE_SHA="${{ steps.pr-details.outputs.base_sha }}"
-          HEAD_SHA=$(git rev-parse HEAD)
-          
-          # Get list of changed files in docs directories
-          git diff --name-only "$BASE_SHA" "$HEAD_SHA" | grep -E '^docs/(en|zh|ja)/' > changed_files.txt || true
-          
-          if [ -s changed_files.txt ]; then
-            # Run translation check script
-            python3 docs/translation/check-and-format-translations.py changed_files.txt
-            
-            # Find the translation check comment
-            comment_id=$(gh api \
-              -H "Accept: application/vnd.github+json" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
-              /repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments \
-              --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("translation-check-comment"))) | .id' | head -1)
-            
-            if [ -n "$comment_id" ]; then
-              # Update the existing comment
-              gh api \
-                --method PATCH \
-                -H "Accept: application/vnd.github+json" \
-                -H "X-GitHub-Api-Version: 2022-11-28" \
-                /repos/${{ github.repository }}/issues/comments/$comment_id \
-                -F 'body=@comment_body.md'
-              echo "Updated translation check comment (ID: $comment_id)"
-            else
-              echo "No translation check comment found to update"
-            fi
-          else
-            echo "No docs files changed"
-          fi
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload patch for fork PRs
-        if: |
-          steps.check-permission.outputs.is_maintainer == 'true' && 
-          steps.translate.outputs.success == 'true' && 
-          steps.pr-details.outputs.is_fork == 'true'
-        uses: actions/upload-artifact@v4
+      # Post the report to the PR
+      - name: Post Translation Report
+        if: always() # Run even if translation failed
+        uses: actions/github-script@v7
         with:
-          name: translations-patch
-          path: translations.patch
-
-      - name: Comment on fork PR
-        if: |
-          steps.check-permission.outputs.is_maintainer == 'true' && 
-          steps.translate.outputs.success == 'true' && 
-          steps.pr-details.outputs.is_fork == 'true'
-        run: |
-          gh pr comment ${{ github.event.issue.number }} --body \
-            "✅ Successfully generated ${{ steps.translate.outputs.translation_count }} translation(s).
+          script: |
+            const fs = require('fs');
+            // The python script writes to the root of the runner's workspace
+            const summaryPath = 'translation_summary.md';
             
-            ⚠️ Since this is a fork PR, the translations cannot be pushed directly. Please download the patch file from the workflow artifacts and apply it to your branch:
-            
-            \`\`\`bash
-            # Download translations.patch from workflow artifacts
-            git apply translations.patch
-            git add .
-            git commit -m 'chore: apply automated translations'
-            git push
-            \`\`\`"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            if (fs.existsSync(summaryPath)) {
+              const summary = fs.readFileSync(summaryPath, 'utf8');
+              
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: summary
+              });
+            } else {
+              console.log("No summary file found.");
+            }
 
-      - name: Comment when no files selected
-        if: |
-          steps.check-permission.outputs.is_maintainer == 'true' && 
-          steps.get-files.outputs.has_files == 'false'
+      - name: Commit and Push
         run: |
-          gh pr comment ${{ github.event.issue.number }} --body \
-            "⚠️ No translations selected. Please check the boxes in the translation comment for the files you want to translate, then run \`/translate\` again."
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          cd pr_code
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Comment on failure
-        if: |
-          steps.check-permission.outputs.is_maintainer == 'true' && 
-          steps.translate.outputs.success == 'false'
-        run: |
-          gh pr comment ${{ github.event.issue.number }} --body \
-            "❌ Translation failed. Please check the workflow logs for details."
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          if [[ -n $(git status --porcelain docs/) ]]; then
+            git add docs/
+            git commit -m "docs: automated translation via Gemini [skip ci]"
 
-      - name: Comment on permission denied
-        if: steps.check-permission.outputs.is_maintainer == 'false'
-        run: |
-          gh pr comment ${{ github.event.issue.number }} --body \
-            "⚠️ Only members of the \`docs-maintainer\` team can trigger automatic translations."
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            # ------------------------------------------------------------------
+            # CRITICAL AUTH FIX: Use PAT to push to Fork
+            # This injects the PAT into the remote URL so we can write to the user's repo
+            # ------------------------------------------------------------------
+            git remote set-url origin https://x-access-token:${{ secrets.DOC_MEMBERSHIP_PAT }}@github.com/${{ steps.pr_data.outputs.head_repo_name }}.git
+
+            # Fetch the specific branch and rebase to ensure a clean history
+            git fetch origin ${{ steps.pr_data.outputs.head_ref }}
+            git rebase origin/${{ steps.pr_data.outputs.head_ref }}
+
+            # Push changes
+            git push origin HEAD:refs/heads/${{ steps.pr_data.outputs.head_ref }}
+          else
+            echo "No translation changes to commit."
+          fi

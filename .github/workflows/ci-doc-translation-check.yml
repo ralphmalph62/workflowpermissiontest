@@ -1,114 +1,140 @@
-name: Check Translation Completeness
-
+name: Translation Status Check
 on:
-  pull_request_target:
-    types: [opened, synchronize, reopened]
-    paths:
-      - 'docs/en/**'
-      - 'docs/zh/**'
-      - 'docs/ja/**'
-
-permissions:
-  contents: read
-  pull-requests: write
+  pull_request_target: # <--- CHANGED: Gives Write Perms for Forks
+    paths: ['docs/en/**', 'docs/zh/**', 'docs/ja/**']
 
 jobs:
-  check-translations:
+  report:
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write # Explicitly request write access
+      contents: read       # We only need to read the code
     steps:
-      - name: Checkout PR code
+      # 1. Checkout the PR's Merge Commit so we can see the NEW files
+      - name: Checkout PR Code
         uses: actions/checkout@v4
         with:
+          # Critical: Checkout the merge commit, not the default 'main'
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Get changed files
+      # 2. Get Changed Files (Compares PR vs Base)
+      - name: Get Changed Files
         id: changed-files
-        run: |
-          # Get the base and head commits
-          BASE_SHA="${{ github.event.pull_request.base.sha }}"
-          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
-          
-          # Get list of changed files in docs directories
-          git diff --name-only "$BASE_SHA" "$HEAD_SHA" | grep -E '^docs/(en|zh|ja)/' > changed_files.txt || true
-          
-          if [ ! -s changed_files.txt ]; then
-            echo "No documentation files changed"
-            echo "has_changes=false" >> $GITHUB_OUTPUT
-          else
-            echo "Documentation files changed:"
-            cat changed_files.txt
-            echo "has_changes=true" >> $GITHUB_OUTPUT
-          fi
+        uses: tj-actions/changed-files@v44
+        with:
+          base_sha: ${{ github.event.pull_request.base.sha }}
+          json: true
+          files: |
+            docs/en/**/*.md*
+            docs/zh/**/*.md*
+            docs/ja/**/*.md*
 
-      - name: Check translation completeness
-        if: steps.changed-files.outputs.has_changes == 'true'
-        id: check-completeness
-        run: |
-          python3 docs/translation/check-and-format-translations.py changed_files.txt
-          has_missing=$(cat has_missing)
-          echo "has_missing=$has_missing" >> $GITHUB_OUTPUT
 
-      - name: Find existing translation comment
-        if: steps.check-completeness.outputs.has_missing == 'true'
-        id: find-comment
+      - name: Generate Checklist Body
+        id: checklist
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let files = [];
+            try {
+              files = JSON.parse('${{ steps.changed-files.outputs.all_changed_files }}');
+            } catch (e) { console.log("No files detected"); }
+
+            // 1. Prepare the Header (Must match 'find-comment' criteria)
+            let body = "### 🌎 Translation Required?\n";
+            const timestamp = new Date().toUTCString();
+
+            // 2. logic to find missing files
+            if (files.length === 0) {
+              body += "\n✅ **All translation files are up to date.**\n";
+              body += "No translation actions are required for this PR.\n";
+              body += `\n> 🕒 **Last updated:** ${timestamp}`;
+              core.setOutput('body', body);
+              return;
+            }
+
+            let contentBuffer = "";
+            let hasMissingTranslations = false;
+
+            files.forEach(file => {
+              if (!fs.existsSync(file)) return;
+
+              const parts = file.split('/');
+              if (parts.length < 2) return; 
+              
+              const sourceLang = parts[1]; 
+              if (!['en', 'zh', 'ja'].includes(sourceLang)) return;
+
+              const targets = ['en', 'zh', 'ja'].filter(l => l !== sourceLang);
+              
+              let fileChecklist = "";
+              targets.forEach(lang => {
+                const targetPath = file.replace(`docs/${sourceLang}/`, `docs/${lang}/`);
+                const isTargetChanged = files.includes(targetPath);
+                const exists = fs.existsSync(targetPath);
+                
+                if (!exists || !isTargetChanged) {
+                  const status = exists ? "(Update)" : "(New)";
+                  fileChecklist += `- [ ] **${lang}** for \`${file}\` ${status}\n`;
+                }
+              });
+
+              if (fileChecklist) {
+                hasMissingTranslations = true;
+                contentBuffer += `#### \`${file}\`\n${fileChecklist}\n`;
+              }
+            });
+
+            // 3. Output logic
+            if (!hasMissingTranslations) {
+              // SUCCESS CASE: Keep the header so we find the comment next time!
+              body += "\n✅ **All translation files are up to date.**\n";
+              body += "Great job! No translation actions are required for this PR.\n";
+            } else {
+              // ACTION REQUIRED CASE
+              body += "Thanks for your doc contribution! The following languages are missing or outdated for your changes.\n\n";
+              body += "If you are fluent in any of the missing languages you can add them. If not, a maintainer will take a look and generate the changes below.\n\n";
+              body += "**Maintainer:** Check the ones you wish to generate:\n\n";
+              
+              body += "#### ⚡ Global Actions\n";
+              body += "- [ ] **Japanese (ja)** for **ALL** missing/outdated files\n";
+              body += "- [ ] **Chinese (zh)** for **ALL** missing/outdated files\n";
+              body += "- [ ] **English (en)** for **ALL** missing/outdated files\n\n---\n";
+
+              body += contentBuffer;
+              body += "---\n*Maintainers: Check boxes and reply with `/translate` to start.*\n";
+            }
+
+            body += `\n\n> 🕒 **Last updated:** ${timestamp}`;
+            
+            core.setOutput('body', body);
+
+      - name: Find Comment
         uses: peter-evans/find-comment@v3
+        id: findcheckboxcomment
         with:
           issue-number: ${{ github.event.pull_request.number }}
           comment-author: 'github-actions[bot]'
-          body-includes: '<!-- translation-check-comment -->'
+          body-includes: "### 🌎 Translation Required?"
 
       - name: Create or update comment
-        if: steps.check-completeness.outputs.has_missing == 'true'
-        run: |
-          # Post or update comment
-          if [ -n "${{ steps.find-comment.outputs.comment-id }}" ]; then
-            # Update existing comment using file input for proper escaping
-            gh api \
-              --method PATCH \
-              -H "Accept: application/vnd.github+json" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
-              /repos/${{ github.repository }}/issues/comments/${{ steps.find-comment.outputs.comment-id }} \
-              -F 'body=@comment_body.md'
-          else
-            # Create new comment
-            gh pr comment ${{ github.event.pull_request.number }} --body-file comment_body.md
-          fi
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Add needs_translation label
-        if: steps.check-completeness.outputs.has_missing == 'true'
-        run: |
-          gh pr edit ${{ github.event.pull_request.number }} --add-label "needs_translation"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Remove labels if translations complete
-        if: steps.changed-files.outputs.has_changes == 'true' && steps.check-completeness.outputs.has_missing == 'false'
-        run: |
-          # Remove needs_translation label if it exists
-          gh pr edit ${{ github.event.pull_request.number }} --remove-label "needs_translation" || true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Update comment if translations complete
-        if: steps.changed-files.outputs.has_changes == 'true' && steps.check-completeness.outputs.has_missing == 'false'
-        uses: peter-evans/find-comment@v3
-        id: find-complete-comment
+        uses: peter-evans/create-or-update-comment@v5
         with:
+          comment-id: ${{ steps.findcheckboxcomment.outputs.comment-id }}
           issue-number: ${{ github.event.pull_request.number }}
-          comment-author: 'github-actions[bot]'
-          body-includes: '<!-- translation-check-comment -->'
-
-      - name: Mark translations as complete
-        if: steps.changed-files.outputs.has_changes == 'true' && steps.check-completeness.outputs.has_missing == 'false' && steps.find-complete-comment.outputs.comment-id != ''
-        uses: peter-evans/create-or-update-comment@v4
-        with:
-          comment-id: ${{ steps.find-complete-comment.outputs.comment-id }}
+          body: ${{ steps.checklist.outputs.body }}
           edit-mode: replace
-          body: |
-            <!-- translation-check-comment -->
-            ## ✅ Translation Check Complete
-            
-            All translations for the changed documentation files are present in this PR!
+
+      - name: Label PR
+        if: steps.checklist.outputs.body != 'No translatable files detected.'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['docs-maintainer']
+            });
