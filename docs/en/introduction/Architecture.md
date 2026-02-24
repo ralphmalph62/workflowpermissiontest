@@ -3,8 +3,6 @@ import QSOverview from '../_assets/commonMarkdown/quickstart-overview-tip.mdx'
 
 # Architecture
 
-OK
-
 StarRocks has a wonderful architecture. The entire system consists of only two types of components: "frontends" and "backends". Frontend nodes are called **FE**. Backend nodes are divided into two types: **BE** and **CN** (compute node). When data uses local storage, BEs are deployed; when data is stored on object storage or HDFS, CNs are deployed. StarRocks does not rely on any external components, which simplifies deployment and maintenance. Nodes can be scaled horizontally without downtime. In addition, StarRocks has a replica mechanism for metadata and service data, which improves data reliability and effectively prevents single points of failure (SPOFs).
 
 StarRocks is compatible with the MySQL communication protocol and supports standard SQL. Users can connect to StarRocks via a MySQL client to gain instant and valuable insights.
